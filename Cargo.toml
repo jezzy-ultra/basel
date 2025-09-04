@@ -1,0 +1,10 @@
+[package]
+name = "basel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+askama = "0.14"
+hex_color = { version = "3", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = { version = "0.9", features = ["serde", "parse"] }
