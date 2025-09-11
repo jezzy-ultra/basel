@@ -1,0 +1,95 @@
+# vim:ft=kitty
+
+## name:     {{ scheme }}
+## author:   {{ author }}
+## license:  {{ license }}
+## ustream:  todo
+## blurb:    {{ blurb }}
+
+
+#: The basic colors
+
+foreground            {{ fg }}
+background            {{ bg }}
+selection_foreground  {{ alt_text }}
+selection_background  {{ alt_select }}
+
+
+#: Cursor colors
+
+cursor             none
+cursor_text_color  background
+
+
+#: URL underline color when hovering with mouse
+
+url_color  {{ link }}
+
+
+#: kitty window border colors and terminal bell colors
+
+active_border_color    {{ accent0 }}
+inactive_border_color  {{ inactive }}
+bell_border_color      {{ accent1 }}
+visual_bell_color      none
+
+
+#: OS Window titlebar colors
+
+wayland_titlebar_color  system
+macos_titlebar_color    system
+
+
+#: Tab bar
+
+active_tab_foreground    {{ accent_text }}
+active_tab_background    {{ accent0 }}
+inactive_tab_foreground  {{ inactive_text }}
+inactive_tab_background  {{ inactive }}
+tab_bar_background       none
+tab_bar_margin_color     none
+
+
+#: Colors for marks (marked text in the terminal)
+
+mark1_foreground  todo
+mark1_background  todo
+mark2_foreground  todo
+mark2_background  todo
+mark3_foreground  todo
+mark3_background  todo
+
+
+#: The basic 16 colors
+
+#: black
+color0   {{ color0 }}
+color8   {{ color8 }}
+
+#: red
+color1   {{ color1 }}
+color9   {{ color9 }}
+
+#: green
+color2   {{ color2 }}
+color10  {{ color10 }}
+
+#: yellow
+color3   {{ color3 }}
+color11  {{ color11 }}
+
+#: blue
+color4   {{ color4 }}
+color12  {{ color12 }}
+
+#: magenta
+color5   {{ color5 }}
+color13  {{ color13 }}
+
+#: cyan
+color6   {{ color6 }}
+color14  {{ color14 }}
+
+#: white
+color7   {{ color7 }}
+color15  {{ color15 }}
