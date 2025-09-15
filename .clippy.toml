@@ -1,25 +1,3 @@
-module-item-order-groupings = [
-  ["use", ["use"]],
-  ["modules", ["extern_crate", "mod", "foreign_mode"]],
-  [
-    "everything_else",
-    [
-      "macro",
-      "global_asm",
-      "static",
-      "const",
-      "ty_alias",
-      "opaque_ty",
-      "enum",
-      "struct",
-      "union",
-      "trait",
-      "trait_alias",
-      "impl",
-      "fn",
-    ],
-  ],
-]
 allow-dbg-in-tests = true
 allow-expect-in-tests = true
 allow-indexing-slicing-in-tests = true
