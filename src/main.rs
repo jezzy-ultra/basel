@@ -12,7 +12,7 @@ use basel::{Config, scheme};
 fn main() {
     let cfg = Config::default();
     let tmpls = Templates::new(&cfg.template_dir).unwrap();
-    let schemes = scheme::load_all(&cfg.scheme_dir);
+    let schemes = scheme::load_all(&cfg.scheme_dir).unwrap();
 
     for t in tmpls.templates().values() {
         for s in schemes.values() {

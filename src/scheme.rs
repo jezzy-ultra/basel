@@ -1,21 +1,23 @@
+use std::fs;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr as _;
-use std::{fs, result};
+use std::sync::Arc;
 
 use hex_color::{Case, Display as HexDisplay, HexColor, ParseHexColorError};
 use indexmap::{IndexMap, IndexSet};
+use minijinja::Value;
+use minijinja::value::Object;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use strum::{self, Display, EnumIter, EnumProperty, EnumString, IntoEnumIterator as _};
-
-use crate::Result;
+use walkdir::WalkDir;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ResolveError {
     #[error("hex parse error: {0}")]
     HexParse(#[from] ParseHexColorError),
     #[error("undefined palette color `{0}`")]
-    UndefinedPaletteColor(String),
+    UndefinedSwatch(String),
     #[error("undefined slot `{0}`")]
     UndefinedSlot(String),
     #[error("circular reference")]
@@ -25,10 +27,10 @@ pub enum ResolveError {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-pub struct Color(HexDisplay);
+pub struct Swatch(HexDisplay);
 
-impl Color {
-    pub fn new<T>(input: T) -> result::Result<Self, ResolveError>
+impl Swatch {
+    fn new<T>(input: T) -> Result<Self, ResolveError>
     where
         Self: TryFrom<T, Error = ResolveError>,
     {
@@ -36,33 +38,33 @@ impl Color {
     }
 
     #[must_use]
-    pub const fn as_hex(self) -> HexColor {
+    pub const fn color(self) -> HexColor {
         self.0.color()
     }
 }
 
-impl From<HexColor> for Color {
-    fn from(hex: HexColor) -> Self {
-        Self(HexDisplay::new(hex).with_case(Case::Lower))
+impl From<HexColor> for Swatch {
+    fn from(color: HexColor) -> Self {
+        Self(HexDisplay::new(color).with_case(Case::Lower))
     }
 }
 
-impl From<HexDisplay> for Color {
+impl From<HexDisplay> for Swatch {
     fn from(display: HexDisplay) -> Self {
         Self(display.with_case(Case::Lower))
     }
 }
 
-impl TryFrom<&str> for Color {
+impl TryFrom<&str> for Swatch {
     type Error = ResolveError;
 
-    fn try_from(s: &str) -> result::Result<Self, Self::Error> {
-        let hex = HexColor::parse(s)?;
-        Ok(Self(HexDisplay::new(hex).with_case(Case::Lower)))
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let color = HexColor::parse(s)?;
+        Ok(Self(HexDisplay::new(color).with_case(Case::Lower)))
     }
 }
 
-impl Deref for Color {
+impl Deref for Swatch {
     type Target = HexDisplay;
 
     fn deref(&self) -> &Self::Target {
@@ -70,8 +72,8 @@ impl Deref for Color {
     }
 }
 
-impl Serialize for Color {
-    fn serialize<S>(&self, serializer: S) -> result::Result<S::Ok, S::Error>
+impl Serialize for Swatch {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -79,8 +81,8 @@ impl Serialize for Color {
     }
 }
 
-impl<'de> Deserialize<'de> for Color {
-    fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
+impl<'de> Deserialize<'de> for Swatch {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -89,60 +91,58 @@ impl<'de> Deserialize<'de> for Color {
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
-pub enum SlotValue {
-    Other(Slot),
-    PaletteColor(String),
-    Rgb(Color),
-    None,
-}
-
-impl<'de> Deserialize<'de> for SlotValue {
-    fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let val = String::deserialize(deserializer)?;
-        Ok(if val == "none" {
-            Self::None
-        } else if let Ok(color) = Color::new(val.as_str()) {
-            Self::Rgb(color)
-        } else if let Some(name) = val.strip_prefix('$') {
-            Self::PaletteColor(name.to_owned())
-        } else if let Ok(slot) = Slot::from_str(&val) {
-            Self::Other(slot)
-        } else {
-            return Err(serde::de::Error::custom(format!("bad slot value: {val}")));
-        })
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Palette {
-    pub colors: IndexMap<String, Color>,
+    #[serde(flatten)]
+    pub swatches: IndexMap<String, Swatch>,
 }
 
 impl Palette {
     #[must_use]
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
-            colors: IndexMap::new(),
+            swatches: IndexMap::new(),
         }
     }
 
-    pub fn insert(&mut self, name: String, color: Color) -> Option<Color> {
-        self.colors.insert(name, color)
-    }
-
     #[must_use]
-    pub fn get(&self, name: &str) -> Option<&Color> {
-        self.colors.get(name)
+    pub fn get(&self, name: &str) -> Option<&Swatch> {
+        self.swatches.get(name)
     }
 }
 
 impl Default for Palette {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Serialize, Clone, Debug)]
+enum SlotValue {
+    Other(Slot),
+    Swatch(String),
+}
+
+impl<'de> Deserialize<'de> for SlotValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let val = String::deserialize(deserializer)?;
+        val.strip_prefix('$').map_or_else(
+            || {
+                Slot::from_str(&val).map_or_else(
+                    |_| {
+                        Err(serde::de::Error::custom(format!(
+                            "invalid slot value `{val}`: must either be a palette reference \
+                             (starting with `$`) or a valid slot name"
+                        )))
+                    },
+                    |slot| Ok(Self::Other(slot)),
+                )
+            },
+            |name| Ok(Self::Swatch(name.to_owned())),
+        )
     }
 }
 
@@ -211,8 +211,30 @@ pub enum Slot {
     InactiveText,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SlotMap {}
+#[derive(Deserialize, Clone, Debug)]
+pub struct ResolvedSlot {
+    pub swatch: String,
+    pub hex: String,
+}
+
+impl Object for ResolvedSlot {
+    fn get_value(self: &Arc<Self>, key: &Value) -> Option<Value> {
+        match key.as_str()? {
+            "swatch" => Some(Value::from(self.swatch.clone())),
+            "hex" => Some(Value::from(self.hex.clone())),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for ResolvedSlot {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.hex)
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Meta {
@@ -222,111 +244,120 @@ pub struct Meta {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Raw {
+pub struct Scheme {
+    pub scheme: String,
     #[serde(flatten)]
     pub meta: Meta,
     pub palette: Palette,
-    pub slots: IndexMap<Slot, SlotValue>,
+    #[serde(flatten)]
+    pub resolved: IndexMap<Slot, ResolvedSlot>,
+}
+
+impl Scheme {}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Raw {
+    #[serde(flatten)]
+    meta: Meta,
+    palette: Palette,
+    slots: IndexMap<Slot, SlotValue>,
 }
 
 impl Raw {
     fn resolve_slot(
         &self,
         slot: Slot,
-        cache: &mut IndexMap<Slot, Color>,
-        visiting: &mut IndexSet<Slot>,
-    ) -> Result<Color> {
-        if let Some(c) = cache.get(&slot) {
-            return Ok(*c);
-        }
-        if !visiting.insert(slot) {
-            return Err(ResolveError::Circular.into());
+        visited: &mut IndexSet<Slot>,
+    ) -> Result<ResolvedSlot, ResolveError> {
+        if !visited.insert(slot) {
+            return Err(ResolveError::Circular);
         }
 
-        let val = self.slots.get(&slot).cloned().unwrap_or_else(|| {
-            slot.get_str("fallback").map_or_else(
-                || panic!("missing required slot `{slot}`"),
-                |s| SlotValue::Other(Slot::from_str(s).unwrap()),
-            )
-        });
-        let out = self.color_from(val, slot, cache, visiting)?;
-
-        visiting.remove(&slot);
-        cache.insert(slot, out);
-        Ok(out)
+        match self.slots.get(&slot) {
+            Some(SlotValue::Swatch(name)) => self.palette.get(name).map_or_else(
+                || Err(ResolveError::UndefinedSwatch(name.clone())),
+                |swatch| {
+                    Ok(ResolvedSlot {
+                        swatch: name.clone(),
+                        hex: swatch.to_string(),
+                    })
+                },
+            ),
+            Some(SlotValue::Other(other)) => self.resolve_slot(*other, visited),
+            None => slot.get_str("fallback").map_or_else(
+                || Err(ResolveError::MissingRequired(slot.to_string())),
+                |fallback_name| {
+                    let fallback_slot = Slot::from_str(fallback_name).unwrap_or_else(|_| {
+                        panic!(
+                            "invalid fallback slot name `{fallback_name}` for slot `{slot}` (this \
+                             is a bug!)"
+                        )
+                    });
+                    self.resolve_slot(fallback_slot, visited)
+                },
+            ),
+        }
     }
 
-    fn color_from(
-        &self,
-        val: SlotValue,
-        slot: Slot,
-        cache: &mut IndexMap<Slot, Color>,
-        visiting: &mut IndexSet<Slot>,
-    ) -> Result<Color> {
-        Ok(match val {
-            SlotValue::None => {
-                return Err(ResolveError::MissingRequired(slot.to_string()).into());
+    fn resolve_all_slots(&self) -> Result<IndexMap<Slot, ResolvedSlot>, ResolveError> {
+        let mut resolved_slots = IndexMap::new();
+        let mut missing = Vec::new();
+
+        for slot in Slot::iter() {
+            let mut visited = IndexSet::new();
+            match self.resolve_slot(slot, &mut visited) {
+                Ok(resolved) => {
+                    resolved_slots.insert(slot, resolved);
+                }
+                Err(ResolveError::MissingRequired(_)) => missing.push(slot.to_string()),
+                Err(e) => return Err(e),
             }
-            SlotValue::Rgb(c) => c,
-            SlotValue::PaletteColor(c) => self
-                .palette
-                .get(&c)
-                .copied()
-                .ok_or_else(|| ResolveError::UndefinedPaletteColor(c.clone()))?,
-            SlotValue::Other(s) => self.resolve_slot(s, cache, visiting)?,
+        }
+
+        if !missing.is_empty() {
+            return Err(ResolveError::MissingRequired(format!(
+                "Missing required slots: {}",
+                missing.join(", ")
+            )));
+        }
+
+        Ok(resolved_slots)
+    }
+
+    fn try_into_scheme(self, name: &str) -> Result<Scheme, ResolveError> {
+        let resolved = self.resolve_all_slots()?;
+
+        Ok(Scheme {
+            scheme: name.to_owned(),
+            meta: self.meta,
+            palette: self.palette,
+            resolved,
         })
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Scheme {
-    pub scheme: String,
-    #[serde(flatten)]
-    pub meta: Meta,
-    #[serde(flatten)]
-    pub slots: IndexMap<Slot, SlotValue>,
-}
-
-#[must_use]
-pub fn resolve(name: &str, raw: Raw) -> Scheme {
-    let mut cache = IndexMap::new();
-    let mut visiting = IndexSet::new();
-
-    let slots = Slot::iter()
-        .filter_map(|s| {
-            raw.resolve_slot(s, &mut cache, &mut visiting)
-                .ok()
-                .map(|c| (s, SlotValue::Rgb(c)))
-        })
-        .collect();
-
-    Scheme {
-        scheme: name.to_owned(),
-        meta: raw.meta,
-        slots,
-    }
-}
-
-#[must_use]
-pub fn load(name: &str, path: PathBuf) -> Scheme {
+pub fn load(name: &str, path: PathBuf) -> Result<Scheme, ResolveError> {
     let content = fs::read_to_string(path).unwrap();
-    let raw = toml::from_str(&content).unwrap();
+    let raw: Raw = toml::from_str(&content).unwrap();
 
-    resolve(name, raw)
+    raw.try_into_scheme(name)
 }
 
-#[must_use]
-pub fn load_all(dir: &str) -> IndexMap<String, Scheme> {
+pub fn load_all(dir: &str) -> Result<IndexMap<String, Scheme>, ResolveError> {
     let mut schemes = IndexMap::new();
 
-    for entry in fs::read_dir(dir).unwrap().flatten() {
+    for entry in WalkDir::new(dir)
+        .into_iter()
+        .filter_entry(|e| !crate::is_hidden(e))
+        .filter_map(Result::ok)
+    {
         let path = entry.path();
-        if path.extension().unwrap() == "toml" {
+        if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("toml") {
             let name = path.file_stem().unwrap().to_str().unwrap();
-            let s = load(name, path.clone());
+            let s = load(name, path.to_path_buf())?;
             schemes.insert(name.to_owned(), s);
         }
     }
 
-    schemes
+    Ok(schemes)
 }
