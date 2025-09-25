@@ -1,0 +1,99 @@
+# vim:ft=kitty
+
+## name:     {{ SCHEME }}
+## author:   {{ meta.author }}
+## license:  {{ meta.license }}
+
+{#- TODO
+## ustream:  {{ upstream_file() }}
+#}
+
+## blurb:    {{ meta.blurb }}
+
+
+#: The basic colors
+
+foreground            {{ fg }}
+background            {{ bg }}
+selection_foreground  {{ alt_fg }}
+selection_background  {{ alt_select }}
+
+
+#: Cursor colors
+
+cursor             none
+cursor_text_color  background
+
+
+#: URL underline color when hovering with mouse
+
+url_color  {{ markup.link }}
+
+
+#: kitty window border colors and terminal bell colors
+
+active_border_color    {{ accent }}
+inactive_border_color  {{ inactive }}
+bell_border_color      {{ accent_2nd }}
+visual_bell_color      {{ error }}
+
+
+#: OS Window titlebar colors
+
+wayland_titlebar_color  background
+macos_titlebar_color    background
+
+
+#: Tab bar
+
+active_tab_foreground    {{ alt_fg }}
+active_tab_background    {{ accent }}
+inactive_tab_foreground  {{ alt_fg }}
+inactive_tab_background  {{ inactive }}
+tab_bar_background       none
+tab_bar_margin_color     none
+
+
+#: Colors for marks (marked text in the terminal)
+
+mark1_foreground  {{ alt_fg }}
+mark1_background  {{ mode.normal }}
+mark2_foreground  {{ alt_fg }}
+mark2_background  {{ mode.insert }}
+mark3_foreground  {{ alt_fg }}
+mark3_background  {{ mode.select }}
+
+
+#: The basic 16 colors
+
+#: black
+color0   {{ ansi.black }}
+color8   {{ ansi.black_bright }}
+
+#: red
+color1   {{ ansi.red }}
+color9   {{ ansi.red_bright }}
+
+#: green
+color2   {{ ansi.green }}
+color10  {{ ansi.green_bright }}
+
+#: yellow
+color3   {{ ansi.yellow }}
+color11  {{ ansi.yellow_bright }}
+
+#: blue
+color4   {{ ansi.blue }}
+color12  {{ ansi.blue_bright }}
+
+#: magenta
+color5   {{ ansi.magenta }}
+color13  {{ ansi.magenta_bright }}
+
+#: cyan
+color6   {{ ansi.cyan }}
+color14  {{ ansi.cyan_bright }}
+
+#: white
+color7   {{ ansi.white }}
+color15  {{ ansi.white_bright }}

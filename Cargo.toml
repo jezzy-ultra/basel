@@ -7,8 +7,9 @@ edition = "2024"
 hex_color = { version = "3", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 minijinja = { version = "2", features = ["loader", "preserve_order"] }
+phf = { version = "0", features = ["macros"] }
 serde = { version = "1", features = ["derive"] }
-strum = { version = "0", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 toml = { version = "0", features = [
   "display",
@@ -138,7 +139,7 @@ unnecessary_safety_doc = "warn"
 unnecessary_self_imports = "warn"
 unnecessary_struct_initialization = "warn"
 unneeded_field_pattern = "warn"
-unreachable = "warn"
+# unreachable = "warn"
 unseparated_literal_suffix = "warn"
 unused_peekable = "warn"
 unused_result_ok = "warn"

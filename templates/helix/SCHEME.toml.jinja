@@ -1,0 +1,179 @@
+#:tombi lint.disabled = true
+#basel: use_swatch_names = true
+
+"attribute" = "{{ syntax.attribute }}"
+"type" = "{{ syntax.type }}"
+"type.builtin" = "{{ syntax.type_builtin }}"
+# "type.enum"
+"type.enum.variant" = "{{ syntax.type_variant }}"
+"constructor" = "{{ syntax.constructor }}"
+"constant" = "{{ syntax.constant }}"
+"constant.builtin" = "{{ syntax.constant_builtin }}"
+"constant.builtin.boolean" = "{{ syntax.constant_boolean }}"
+"constant.character" = "{{ syntax.constant_character }}"
+"constant.character.escape" = "{{ syntax.special_character }}"
+"constant.numeric" = "{{ syntax.constant_number }}"
+# "constant.numeric.integer"
+# "constant.numeric.float"
+"string" = "{{ syntax.string }}"
+"string.regexp" = "{{ syntax.special_string }}"
+"string.special" = "{{ syntax.special_string }}"
+"string.special.path" = "{{ markup.link }}"
+"string.special.url" = { fg = "{{ markup.link }}", underline.style = "line" }
+"string.special.symbol" = "{{ syntax.special_string }}"
+"comment" = "{{ syntax.comment }}"
+# "comment.line"
+# "comment.line.documentation"
+# "comment.block"
+# "comment.block.documentation"
+# "comment.unused"
+"variable" = "{{ syntax.variable }}"
+"variable.builtin" = "{{ syntax.variable_builtin }}"
+"variable.parameter" = "{{ syntax.variable_parameter }}"
+"variable.other" = "{{ syntax.variable_member }}"
+# "variable.other.member"
+# "variable.other.member.private"
+"label" = "{{ syntax.label }}"
+"punctuation" = "{{ syntax.punctuation }}"
+# "punctuation.delimiter"
+# "punctuation.bracket"
+"punctuation.special" = "{{ syntax.special_punctuation }}"
+"keyword" = "{{ syntax.keyword }}"
+# "keyword.control"
+"keyword.control.conditional" = "{{ syntax.keyword_conditional }}"
+"keyword.control.repeat" = "{{ syntax.keyword_repeat }}"
+"keyword.control.import" = "{{ syntax.keyword_import }}"
+"keyword.control.return" = "{{ syntax.keyword_return }}"
+"keyword.control.exception" = "{{ syntax.keyword_exception }}"
+"keyword.operator" = "{{ syntax.keyword_operator }}"
+"keyword.directive" = "{{ syntax.keyword_directive }}"
+"keyword.function" = "{{ syntax.keyword_function }}"
+"keyword.storage" = "{{ syntax.keyword_storage }}"
+# "keyword.storage.type"
+# "keyword.storage.modifier"
+"operator" = "{{ syntax.operator }}"
+"function" = "{{ syntax.function }}"
+"function.builtin" = "{{ syntax.function_builtin }}"
+"function.method" = "{{ syntax.function_method }}"
+# "function.method.private"
+"function.macro" = "{{ syntax.function_macro }}"
+"function.special" = "{{ syntax.special_function }}"
+"tag" = "{{ syntax.tag }}"
+"tag.builtin" = "{{ syntax.tag_builtin }}"
+"namespace" = "{{ syntax.namespace }}"
+"special" = "{{ syntax.special }}"
+# "markup"
+# "markup.normal"
+# "markup.normal.completion"
+# "markup.normal.hover"
+# "markup.heading"
+# "markup.heading.marker"
+"markup.heading.1" = "{{ markup.heading }}"
+"markup.heading.2" = "{{ markup.heading_2nd }}"
+"markup.heading.3" = "{{ markup.heading_3rd }}"
+"markup.heading.4" = "{{ markup.heading_4th }}"
+"markup.heading.5" = "{{ markup.heading_5th }}"
+"markup.heading.6" = "{{ markup.heading_6th }}"
+# "markup.heading.completion"
+# "markup.heading.hover"
+# "markup.list"
+"markup.list.unnumbered" = "{{ markup.list }}"
+"markup.list.numbered" = "{{ markup.list_numbered }}"
+"markup.list.checked" = "{{ markup.list_checked }}"
+"markup.list.unchecked" = "{{ markup.list_unchecked }}"
+"markup.bold" = { fg = "{{ markup.bold }}", modifiers = ["bold"] }
+"markup.italic" = { fg = "{{ markup.italic }}", modifiers = ["italic"] }
+"markup.strikethrough" = { fg = "{{ markup.strikethrough }}", modifiers = [
+  "crossed_out",
+] }
+# "markup.link"
+"markup.link.url" = { fg = "{{ markup.link }}", underline.style = "line" }
+"markup.link.label" = "{{ markup.link_text }}"
+"markup.link.text" = "{{ markup.link_text }}"
+"markup.quote" = "{{ markup.quote }}"
+"markup.raw" = "{{ markup.raw }}"
+# "markup.raw.inline"
+# "markup.raw.inline.completion"
+# "markup.raw.inline.hover"
+# "markup.raw.block"
+# "diff"
+"diff.plus" = "{{ diff.plus }}"
+# "diff.plus.gutter"
+"diff.minus" = "{{ diff.minus }}"
+# "diff.minus.gutter"
+"diff.delta" = "{{ diff.delta }}"
+"diff.delta.moved" = "{{ diff.delta_moved }}"
+"diff.delta.conflict" = "{{ diff.delta_conflict }}"
+# "diff.delta.gutter"
+"ui.background" = "{{ bg }}"
+"background.separator" = "{{ accent }}"
+# "cursor"
+"ui.cursor.normal" = { bg = "{{ mode.normal_2nd }}", fg = "{{ alt_fg }}" }
+"cursor.insert" = { bg = "{{ mode.insert_2nd }}", fg = "{{ alt_fg }}" }
+"cursor.select" = { bg = "{{ mode.select_2nd }}", fg = "{{ alt_fg }}" }
+"cursor.match" = { fg = "{{ match }}", modifiers = ["bold"], underline.style = "line" }
+# "ui.cursor.primary"
+"ui.cursor.primary.normal" = { bg = "{{ mode.normal }}", fg = "{{ alt_fg }}" }
+"cursor.primary.insert" = { bg = "{{ mode.insert }}", fg = "{{ alt_fg }}" }
+"cursor.primary.select" = { bg = "{{ mode.select }}", fg = "{{ alt_fg }}" }
+"debug.breakpoint" = "{{ debug.breakpoint }}"
+"ui.debug.active" = "{{ debug.active }}"
+# "ui.gutter"
+# "ui.gutter.selected"
+"ui.linenr" = "{{ guide_linenum }}"
+"linenr.selected" = { fg = "{{ accent_linenum }}", modifiers = ["bold"] }
+"statusline" = { bg = "{{ toolbar }}", fg = "{{ fg }}" }
+"statusline.inactive" = { modifiers = ["dim"] }
+"ui.statusline.normal" = { bg = "{{ mode.normal }}", fg = "{{ alt_fg }}" }
+"statusline.insert" = { bg = "{{ mode.insert }}", fg = "{{ alt_fg }}" }
+"statusline.select" = { bg = "{{ mode.select }}", fg = "{{ alt_fg }}" }
+"statusline.separator" = { fg = "{{ accent_separator }}", modifiers = ["bold"] }
+"bufferline" = { fg = "{{ inactive }}" }
+"bufferline.active" = { fg = "{{ accent }}", modifiers = ["bold"], style = "double_line" }
+"ui.bufferline.background" = { bg = "{{ alt_toolbar }}" }
+"popup" = { bg = "{{ toolbar_popup }}", fg = "{{ accent_popup }}" }
+# "popup.info"
+# "ui.picker.header"
+# "ui.picker.header.column"
+"ui.picker.header.column.active" = { modifiers = ["bold"], underline = { color = "{{ accent_separator }}", style = "line" } }
+"window" = "{{ accent_separator }}"
+"help" = { fg = "{{ accent_popup }}", bg = "{{ toolbar }}" }
+"text" = "{{ fg }}"
+"text.focus" = { bg = "{{ focus }}" }
+"text.inactive" = { fg = "{{ inactive }}" }
+# "text.info"
+"ui.text.directory" = "{{ accent_2nd }}"
+"virtual.ruler" = { bg = "{{ guide_ruler }}" }
+"virtual.whitespace" = "{{ guide_whitespace }}"
+"virtual.indent-guide" = "{{ guide }}"
+"virtual.inlay-hint" = { bg = "{{ alt_bg }}", fg = "{{ guide_inlay }}", modifiers = [
+  "italic",
+] }
+# "virtual.inlay-hint.parameter"
+# "ui.virtual.inlay-hint.type"
+"ui.virtual.wrap" = "{{ guide_whitespace }}"
+"virtual.jump-label" = { fg = "{{ match }}", modifiers = ["bold", "italic"] }
+"menu" = { bg = "{{ toolbar }}" }
+"menu.selected" = { fg = "{{ accent }}", modifiers = ["bold"], underline.style = "line" }
+"menu.scroll" = { bg = "{{ toolbar }}", fg = "{{ accent }}" }
+"selection" = { bg = "{{ select_2nd }}" }
+"selection.primary" = { bg = "{{ select }}" }
+"highlight" = { bg = "{{ select }}" }
+"highlight.frameline" = { bg = "{{ debug.frameline }}" }
+"ui.cursorline.primary" = { bg = "{{ focus }}" }
+# "cursorline.secondary"
+"ui.cursorcolumn.primary" = { bg = "{{ focus }}" }
+# "cursorcolumn.secondary"
+"warning" = { bg = "{{ toolbar_popup }}", fg = "{{ warning }}", underline = { color = "{{ warning }}", style = "curl" } }
+"error" = { bg = "{{ toolbar_popup }}", fg = "{{ error }}", underline = { color = "{{ error }}", style = "curl" } }
+"info" = { bg = "{{ toolbar_popup }}", fg = "{{ info }}", underline = { color = "{{ info }}", style = "curl" } }
+"hint" = { bg = "{{ toolbar_popup }}", fg = "{{ hint }}", underline = { color = "{{ hint }}", style = "curl" } }
+"diagnostic" = { underline = { color = "{{ fg }}", style = "curl" } }
+"unnecessary" = { underline = { color = "{{ unnecessary }}", style = "dotted" } }
+"deprecated" = { modifiers = ["crossed_out"] }
+"tabstop" = { modifiers = ["italic"] }
+
+[palette]
+{% for swatch in palette %}
+{{ swatch.name }} = "{{ swatch.hex }}"
+{% endfor %}

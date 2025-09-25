@@ -10,6 +10,7 @@ use std::{io, result};
 
 use scheme::ResolveError;
 
+pub mod render;
 pub mod scheme;
 pub mod template;
 
@@ -31,6 +32,7 @@ pub type Result<T> = result::Result<T, Error>;
 pub struct Config {
     pub scheme_dir: String,
     pub template_dir: String,
+    pub output_dir: String,
 }
 
 impl Default for Config {
@@ -38,6 +40,7 @@ impl Default for Config {
         Self {
             scheme_dir: "schemes".to_owned(),
             template_dir: "templates".to_owned(),
+            output_dir: "render".to_owned(),
         }
     }
 }

@@ -7,16 +7,14 @@
 #![allow(clippy::unwrap_used, reason = "todo: better error handling")]
 
 use basel::template::Templates;
-use basel::{Config, scheme};
+use basel::{Config, Result, render, scheme};
 
-fn main() {
+fn main() -> Result<()> {
     let cfg = Config::default();
-    let tmpls = Templates::new(&cfg.template_dir).unwrap();
-    let schemes = scheme::load_all(&cfg.scheme_dir).unwrap();
+    let templates = Templates::new(&cfg.template_dir)?;
+    let schemes = scheme::load_all(&cfg.scheme_dir)?;
 
-    for t in tmpls.templates().values() {
-        for s in schemes.values() {
-            println!("{}", t.render(s).unwrap());
-        }
-    }
+    render::all(&cfg, &templates, &schemes)?;
+
+    Ok(())
 }
