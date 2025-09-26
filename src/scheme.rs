@@ -1,13 +1,17 @@
+use std::fmt::Formatter;
 use std::fs;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use hex_color::{Case, Display as HexDisplay, HexColor, ParseHexColorError};
 use indexmap::{IndexMap, IndexSet};
+use minijinja::Value;
+use minijinja::value::{Enumerator, Object};
 use phf::{OrderedMap, phf_ordered_map};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
-use toml::{Table, Value};
+use toml::Table;
 use walkdir::WalkDir;
 
 pub const SLOTS_WITH_FALLBACKS: OrderedMap<&str, Option<&str>> = phf_ordered_map! {
@@ -214,6 +218,49 @@ impl<'de> Deserialize<'de> for Swatch {
     }
 }
 
+fn create_rgb_objects(r: u8, g: u8, b: u8) -> (serde_json::Value, serde_json::Value) {
+    let rgb_obj = json!({
+        "r": r,
+        "g": g,
+        "b": b,
+    });
+    let rgb_u_obj = json!({
+        "r": f64::from(r) / 255.0,
+        "g": f64::from(g) / 255.0,
+        "b": f64::from(b) / 255.0,
+    });
+
+    (rgb_obj, rgb_u_obj)
+}
+
+fn create_rgb_values(rgb: (u8, u8, u8)) -> (Value, Value) {
+    let (r, g, b) = rgb;
+    let (rgb_obj, rgb_u_obj) = create_rgb_objects(r, g, b);
+
+    (
+        Value::from_serialize(rgb_obj),
+        Value::from_serialize(rgb_u_obj),
+    )
+}
+
+trait SwatchExt {
+    fn to_rich_object(&self, name: &str) -> serde_json::Value;
+}
+
+impl SwatchExt for Swatch {
+    fn to_rich_object(&self, name: &str) -> serde_json::Value {
+        let (r, g, b) = self.color().split_rgb();
+        let (rgb_obj, rgb_u_obj) = create_rgb_objects(r, g, b);
+
+        json!({
+            "name": name,
+            "hex": self.to_string(),
+            "rgb": rgb_obj,
+            "rgb_u": rgb_u_obj,
+        })
+    }
+}
+
 #[derive(Serialize, Clone, Debug)]
 enum SlotValue {
     Other(String),
@@ -222,7 +269,7 @@ enum SlotValue {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ResolvedSlot {
-    pub swatch_name: String,
+    pub swatch: String,
     pub hex: String,
 }
 
@@ -234,6 +281,112 @@ pub struct Meta {
     pub upstream: String,
     // FIXME: add default value
     pub upstream_template: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct SlotObject {
+    hex: String,
+    swatch: String,
+    rgb: (u8, u8, u8),
+    render_as_swatch: bool,
+}
+
+impl SlotObject {
+    const fn new(hex: String, swatch: String, rgb: (u8, u8, u8), render_as_swatch: bool) -> Self {
+        Self {
+            hex,
+            swatch,
+            rgb,
+            render_as_swatch,
+        }
+    }
+}
+
+impl Object for SlotObject {
+    fn render(self: &Arc<Self>, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            if self.render_as_swatch {
+                &self.swatch
+            } else {
+                &self.hex
+            }
+        )
+    }
+
+    fn get_value(self: &Arc<Self>, key: &Value) -> Option<Value> {
+        match key.as_str()? {
+            "hex" => Some(Value::from(&self.hex)),
+            "swatch" => Some(Value::from(&self.swatch)),
+            "rgb" | "rgb_u" => {
+                let (rgb_val, rgb_u_val) = create_rgb_values(self.rgb);
+                Some(if key.as_str()? == "rgb" {
+                    rgb_val
+                } else {
+                    rgb_u_val
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn enumerate(self: &Arc<Self>) -> Enumerator {
+        minijinja::value::Enumerator::Str(&["hex", "swatch", "rgb", "rgb_u"])
+    }
+}
+
+#[derive(Debug)]
+pub struct SwatchObject {
+    name: String,
+    hex: String,
+    rgb: (u8, u8, u8),
+    render_as_swatch: bool,
+}
+
+impl SwatchObject {
+    const fn new(name: String, hex: String, rgb: (u8, u8, u8), render_as_swatch: bool) -> Self {
+        Self {
+            name,
+            hex,
+            rgb,
+            render_as_swatch,
+        }
+    }
+}
+
+impl Object for SwatchObject {
+    fn render(self: &Arc<Self>, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            if self.render_as_swatch {
+                &self.name
+            } else {
+                &self.hex
+            }
+        )
+    }
+
+    fn get_value(self: &Arc<Self>, key: &Value) -> Option<Value> {
+        match key.as_str()? {
+            "name" => Some(Value::from(&self.name)),
+            "hex" => Some(Value::from(&self.hex)),
+            "rgb" | "rgb_u" => {
+                let (rgb_val, rgb_u_val) = create_rgb_values(self.rgb);
+                Some(if key.as_str()? == "rgb" {
+                    rgb_val
+                } else {
+                    rgb_u_val
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn enumerate(self: &Arc<Self>) -> Enumerator {
+        Enumerator::Str(&["name", "hex", "rgb", "rgb_u"])
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -250,12 +403,10 @@ impl Scheme {
     #[must_use]
     pub fn create_context(
         &self,
-        directives: &IndexMap<String, String>,
+        render_swatch_names: bool,
+        current_swatch: Option<&str>,
     ) -> serde_json::Map<String, serde_json::Value> {
         let mut context = serde_json::Map::new();
-        let use_swatch_names = directives
-            .get("use_swatch_names")
-            .is_some_and(|v| v == "true");
 
         context.insert(
             "SCHEME".to_owned(),
@@ -266,40 +417,66 @@ impl Scheme {
         let p: Vec<serde_json::Value> = self
             .palette
             .iter()
-            .map(|(name, swatch)| {
-                json!({
-                    "name": name,
-                    "hex": swatch.to_string(),
-                })
-            })
+            .map(|(name, swatch)| swatch.to_rich_object(name))
             .collect();
         context.insert("palette".to_owned(), serde_json::Value::Array(p));
 
         for (slot_path, resolved_slot) in &self.resolved_slots {
             let parts: Vec<&str> = slot_path.split('.').collect();
+            let rgb = self.palette.get(&resolved_slot.swatch).map_or_else(
+                || {
+                    panic!(
+                        "invalid slot name {}! this is a bug!",
+                        &resolved_slot.swatch
+                    )
+                },
+                |swatch| swatch.color().split_rgb(),
+            );
 
-            let slot = if use_swatch_names {
-                serde_json::Value::String(resolved_slot.swatch_name.clone())
-            } else {
-                serde_json::Value::String(resolved_slot.hex.clone())
-            };
+            let slot_object = SlotObject::new(
+                resolved_slot.hex.clone(),
+                resolved_slot.swatch.clone(),
+                rgb,
+                render_swatch_names,
+            );
+
+            let slot_value = Value::from_object(slot_object);
 
             match parts.as_slice() {
                 [key] => {
-                    context.insert((*key).to_owned(), serde_json::to_value(slot).unwrap());
+                    context.insert((*key).to_owned(), serde_json::to_value(slot_value).unwrap());
                 }
                 [group, key] => {
                     let group_obj = context
                         .entry(group.to_owned())
                         .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
                     if let serde_json::Value::Object(group_map) = group_obj {
-                        group_map.insert((*key).to_owned(), slot);
+                        group_map
+                            .insert((*key).to_owned(), serde_json::to_value(slot_value).unwrap());
                     }
                 }
                 _ => unreachable!(
                     "all slots validated against `SLOTS_WITH_FALLBACKS` should be covered here"
                 ),
             }
+        }
+
+        if let Some(name) = current_swatch
+            && let Some(swatch) = self.palette.get(name)
+        {
+            let rgb = swatch.color().split_rgb();
+            let swatch_object = SwatchObject::new(
+                name.to_owned(),
+                swatch.to_string(),
+                rgb,
+                render_swatch_names,
+            );
+            let swatch_value = Value::from_object(swatch_object);
+
+            context.insert(
+                "SWATCH".to_owned(),
+                serde_json::to_value(swatch_value).unwrap(),
+            );
         }
 
         context
@@ -331,10 +508,10 @@ impl Raw {
         )
     }
 
-    fn parse_slots(slots_value: &Value) -> Result<IndexMap<String, SlotValue>, ResolveError> {
+    fn parse_slots(slots_value: &toml::Value) -> Result<IndexMap<String, SlotValue>, ResolveError> {
         let mut result = IndexMap::new();
 
-        let Value::Table(table) = slots_value else {
+        let toml::Value::Table(table) = slots_value else {
             // FIXME: better errors
             return Err(ResolveError::UndefinedSlot(
                 "`slots` must be a table".to_owned(),
@@ -343,15 +520,15 @@ impl Raw {
 
         for (key, val) in table {
             match val {
-                Value::Table(nested_table) => {
+                toml::Value::Table(nested_table) => {
                     for (nested_key, nested_val) in nested_table {
                         let dot_key = format!("{key}.{nested_key}");
-                        if let Value::String(s) = nested_val {
+                        if let toml::Value::String(s) = nested_val {
                             result.insert(dot_key, Self::parse_slot_value(s)?);
                         }
                     }
                 }
-                Value::String(s) => {
+                toml::Value::String(s) => {
                     result.insert(key.clone(), Self::parse_slot_value(s)?);
                 }
                 _ => {
@@ -380,7 +557,7 @@ impl Raw {
                 || Err(ResolveError::UndefinedSwatch(name.clone())),
                 |swatch| {
                     Ok(ResolvedSlot {
-                        swatch_name: name.clone(),
+                        swatch: name.clone(),
                         hex: swatch.to_string(),
                     })
                 },

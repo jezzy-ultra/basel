@@ -4,14 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.11"
 hex_color = { version = "3", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
-minijinja = { version = "2", features = ["loader", "preserve_order"] }
-phf = { version = "0", features = ["macros"] }
+log = "0.4"
+minijinja = { version = "2", features = ["json", "loader", "preserve_order"] }
+phf = { version = "0.13", features = ["macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
-toml = { version = "0", features = [
+toml = { version = "0.9", features = [
   "display",
   "parse",
   "preserve_order",
