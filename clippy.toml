@@ -1,3 +1,4 @@
+absolute-paths-max-segments = 3
 allow-dbg-in-tests = true
 allow-expect-in-tests = true
 allow-indexing-slicing-in-tests = true

@@ -1,22 +1,26 @@
 # vim:ft=kitty
 
-## name:     {{ SCHEME }}
-## author:   {{ meta.author }}
-## license:  {{ meta.license }}
-
-{#- TODO
-## ustream:  {{ upstream_file() }}
-#}
-
-## blurb:    {{ meta.blurb }}
+## name:      {{ SCHEME }}
+{% if meta.author is defined %}
+## author:    {{ meta.author }}
+{% endif -%}
+{% if meta.license is defined %}
+## license:   {{ meta.license }}
+{% endif -%}
+{% if special.upstream_file is defined %}
+## upstream:  {{ special.upstream_file }}
+{% endif -%}
+{% if meta.blurb is defined %}
+## blurb:     {{ meta.blurb }}
+{% endif %}
 
 
 #: The basic colors
 
 foreground            {{ fg }}
 background            {{ bg }}
-selection_foreground  {{ alt_fg }}
-selection_background  {{ alt_select }}
+selection_foreground  {{ fg_alt }}
+selection_background  {{ select_alt }}
 
 
 #: Cursor colors
@@ -46,9 +50,9 @@ macos_titlebar_color    background
 
 #: Tab bar
 
-active_tab_foreground    {{ alt_fg }}
+active_tab_foreground    {{ fg_alt }}
 active_tab_background    {{ accent }}
-inactive_tab_foreground  {{ alt_fg }}
+inactive_tab_foreground  {{ fg_alt }}
 inactive_tab_background  {{ inactive }}
 tab_bar_background       none
 tab_bar_margin_color     none
@@ -56,11 +60,11 @@ tab_bar_margin_color     none
 
 #: Colors for marks (marked text in the terminal)
 
-mark1_foreground  {{ alt_fg }}
+mark1_foreground  {{ fg_alt }}
 mark1_background  {{ mode.normal }}
-mark2_foreground  {{ alt_fg }}
+mark2_foreground  {{ fg_alt }}
 mark2_background  {{ mode.insert }}
-mark3_foreground  {{ alt_fg }}
+mark3_foreground  {{ fg_alt }}
 mark3_background  {{ mode.select }}
 
 

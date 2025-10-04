@@ -1,177 +1,290 @@
+#basel: render_swatch_names = true
 #:tombi lint.disabled = true
-#basel: use_swatch_names = true
 
+{% if "syntax.attribute" is set %}
 "attribute" = "{{ syntax.attribute }}"
+{% endif -%}
 "type" = "{{ syntax.type }}"
+{% if "syntax.type_builtin" is set %}
 "type.builtin" = "{{ syntax.type_builtin }}"
-# "type.enum"
+{% endif -%}
+{# "type.enum" #}
+{% if "syntax.type_variant" is set %}
 "type.enum.variant" = "{{ syntax.type_variant }}"
+{% endif -%}
 "constructor" = "{{ syntax.constructor }}"
 "constant" = "{{ syntax.constant }}"
+{% if "syntax.constant_builtin" is set %}
 "constant.builtin" = "{{ syntax.constant_builtin }}"
+{% endif -%}
+{% if "syntax.constant_boolean" is set %}
 "constant.builtin.boolean" = "{{ syntax.constant_boolean }}"
+{% endif -%}
+{% if "syntax.constant_character" is set %}
 "constant.character" = "{{ syntax.constant_character }}"
+{% endif -%}
+{% if "syntax.special_character" is set %}
 "constant.character.escape" = "{{ syntax.special_character }}"
+{% endif -%}
+{% if "syntax.constant_number" is set %}
 "constant.numeric" = "{{ syntax.constant_number }}"
-# "constant.numeric.integer"
-# "constant.numeric.float"
+{% endif -%}
+{# "constant.numeric.integer" #}
+{# "constant.numeric.float" #}
 "string" = "{{ syntax.string }}"
+{% if "syntax.special_string" is set %}
 "string.regexp" = "{{ syntax.special_string }}"
+{% endif -%}
+{% if "syntax.special_string" is set %}
 "string.special" = "{{ syntax.special_string }}"
+{% endif -%}
 "string.special.path" = "{{ markup.link }}"
-"string.special.url" = { fg = "{{ markup.link }}", underline.style = "line" }
-"string.special.symbol" = "{{ syntax.special_string }}"
+"string.special.url" = { fg = "{{ markup.link }}", underline = { color = "{{ markup.link }}", style = "line" } }
+{# "string.special.symbol" #}
 "comment" = "{{ syntax.comment }}"
-# "comment.line"
-# "comment.line.documentation"
-# "comment.block"
-# "comment.block.documentation"
-# "comment.unused"
+{# "comment.line" #}
+{% if "syntax.comment_doc" is set %}
+"comment.line.documentation" = "{{ syntax.comment_doc }}"
+{% endif -%}
+{# "comment.block" #}
+{% if "syntax.comment_doc" is set %}
+"comment.block.documentation" = "{{ syntax.comment_doc }}"
+{% endif -%}
+"comment.unused" = { modifiers = ["dim"] }
 "variable" = "{{ syntax.variable }}"
+{% if "syntax.variable_builtin" is set %}
 "variable.builtin" = "{{ syntax.variable_builtin }}"
+{% endif -%}
+{% if "syntax.variable_parameter" is set %}
 "variable.parameter" = "{{ syntax.variable_parameter }}"
+{% endif -%}
+{% if "syntax.variable_member" is set %}
 "variable.other" = "{{ syntax.variable_member }}"
-# "variable.other.member"
-# "variable.other.member.private"
+{% endif -%}
+{# "variable.other.member" #}
+{# "variable.other.member.private" #}
 "label" = "{{ syntax.label }}"
 "punctuation" = "{{ syntax.punctuation }}"
-# "punctuation.delimiter"
-# "punctuation.bracket"
+{# "punctuation.delimiter" #}
+{# "punctuation.bracket" #}
 "punctuation.special" = "{{ syntax.special_punctuation }}"
 "keyword" = "{{ syntax.keyword }}"
-# "keyword.control"
+{# "keyword.control" #}
+{% if "syntax.keyword_conditional" is set %}
 "keyword.control.conditional" = "{{ syntax.keyword_conditional }}"
+{% endif -%}
+{% if "syntax.keyword_repeat" is set %}
 "keyword.control.repeat" = "{{ syntax.keyword_repeat }}"
+{% endif -%}
+{% if "syntax.keyword_import" is set %}
 "keyword.control.import" = "{{ syntax.keyword_import }}"
+{% endif -%}
+{% if "syntax.keyword_return" is set %}
 "keyword.control.return" = "{{ syntax.keyword_return }}"
+{% endif -%}
+{% if "syntax.keyword_exception" is set %}
 "keyword.control.exception" = "{{ syntax.keyword_exception }}"
+{% endif -%}
+{% if "syntax.keyword_operator" is set %}
 "keyword.operator" = "{{ syntax.keyword_operator }}"
+{% endif -%}
+{% if "syntax.keyword_directive" is set %}
 "keyword.directive" = "{{ syntax.keyword_directive }}"
+{% endif -%}
+{% if "syntax.keyword_function" is set %}
 "keyword.function" = "{{ syntax.keyword_function }}"
+{% endif -%}
+{% if "syntax.keyword_storage" is set %}
 "keyword.storage" = "{{ syntax.keyword_storage }}"
-# "keyword.storage.type"
-# "keyword.storage.modifier"
+{% endif -%}
+{# "keyword.storage.type" #}
+{# "keyword.storage.modifier" #}
 "operator" = "{{ syntax.operator }}"
 "function" = "{{ syntax.function }}"
+{% if "syntax.function_builtin" is set %}
 "function.builtin" = "{{ syntax.function_builtin }}"
+{% endif -%}
+{% if "syntax.function_method" is set %}
 "function.method" = "{{ syntax.function_method }}"
-# "function.method.private"
+{% endif -%}
+{# "function.method.private" #}
+{% if "syntax.function_macro" is set %}
 "function.macro" = "{{ syntax.function_macro }}"
+{% endif -%}
+{% if "syntax.special_function" is set %}
 "function.special" = "{{ syntax.special_function }}"
+{% endif -%}
 "tag" = "{{ syntax.tag }}"
+{% if "syntax.tag_builtin" is set %}
 "tag.builtin" = "{{ syntax.tag_builtin }}"
+{% endif -%}
 "namespace" = "{{ syntax.namespace }}"
 "special" = "{{ syntax.special }}"
-# "markup"
-# "markup.normal"
-# "markup.normal.completion"
-# "markup.normal.hover"
-# "markup.heading"
-# "markup.heading.marker"
-"markup.heading.1" = "{{ markup.heading }}"
-"markup.heading.2" = "{{ markup.heading_2nd }}"
-"markup.heading.3" = "{{ markup.heading_3rd }}"
-"markup.heading.4" = "{{ markup.heading_4th }}"
-"markup.heading.5" = "{{ markup.heading_5th }}"
-"markup.heading.6" = "{{ markup.heading_6th }}"
-# "markup.heading.completion"
-# "markup.heading.hover"
-# "markup.list"
+{# "markup" #}
+{# "markup.normal" #}
+{# "markup.normal.completion" #}
+{# "markup.normal.hover" #}
+"markup.heading" = { fg = "{{ markup.heading }}", modifiers = ["bold"] }
+{# "markup.heading.marker" #}
+"markup.heading.1" = { fg = "{{ markup.heading }}", modifiers = ["bold"] }
+{% if "markup.heading_2nd" is set %}
+"markup.heading.2" = { fg = "{{ markup.heading_2nd }}", modifiers = ["bold"] }
+{% endif -%}
+{% if "markup.heading_3rd" is set %}
+"markup.heading.3" = { fg = "{{ markup.heading_3rd }}", modifiers = ["bold"] }
+{% endif -%}
+{% if "markup.heading_4th" is set %}
+"markup.heading.4" = { fg = "{{ markup.heading_4th }}", modifiers = ["bold"] }
+{% endif -%}
+{% if "markup.heading_5th" is set %}
+"markup.heading.5" = { fg = "{{ markup.heading_5th }}", modifiers = ["bold"] }
+{% endif -%}
+{% if "markup.heading_6th" is set %}
+"markup.heading.6" = { fg = "{{ markup.heading_6th }}", modifiers = ["bold"] }
+{% endif -%}
+{# "markup.heading.completion" #}
+{# "markup.heading.hover" #}
+"markup.list" = "{{ markup.list }}"
 "markup.list.unnumbered" = "{{ markup.list }}"
+{% if "markup.list_numbered" is set %}
 "markup.list.numbered" = "{{ markup.list_numbered }}"
+{% endif -%}
+{% if "markup.list_checked" is set %}
 "markup.list.checked" = "{{ markup.list_checked }}"
+{% endif -%}
+{% if "markup.list_unchecked" is set %}
 "markup.list.unchecked" = "{{ markup.list_unchecked }}"
+{% endif -%}
+{% if "markup.bold" is set %}
 "markup.bold" = { fg = "{{ markup.bold }}", modifiers = ["bold"] }
+{% endif -%}
+{% if "markup.italic" is set %}
 "markup.italic" = { fg = "{{ markup.italic }}", modifiers = ["italic"] }
+{% endif -%}
+{% if "markup.strikethrough" is set %}
 "markup.strikethrough" = { fg = "{{ markup.strikethrough }}", modifiers = [
   "crossed_out",
 ] }
-# "markup.link"
-"markup.link.url" = { fg = "{{ markup.link }}", underline.style = "line" }
+{% endif -%}
+"markup.link" = { fg = "{{ markup.link }}", underline = { color = "{{ markup.link }}", style = "line" } }
+"markup.link.url" = { fg = "{{ markup.link }}", underline = { color = "{{ markup.link }}", style = "line" } }
+{% if "markup.link_text" is set %}
 "markup.link.label" = "{{ markup.link_text }}"
 "markup.link.text" = "{{ markup.link_text }}"
+{% endif -%}
 "markup.quote" = "{{ markup.quote }}"
 "markup.raw" = "{{ markup.raw }}"
-# "markup.raw.inline"
-# "markup.raw.inline.completion"
-# "markup.raw.inline.hover"
-# "markup.raw.block"
-# "diff"
+{# "markup.raw.inline" #}
+{# "markup.raw.inline.completion" #}
+{# "markup.raw.inline.hover" #}
+{# "markup.raw.block" #}
+{# "diff" #}
 "diff.plus" = "{{ diff.plus }}"
-# "diff.plus.gutter"
+{# "diff.plus.gutter" #}
 "diff.minus" = "{{ diff.minus }}"
-# "diff.minus.gutter"
+{# "diff.minus.gutter" #}
 "diff.delta" = "{{ diff.delta }}"
+{% if "diff.delta_moved" is set %}
 "diff.delta.moved" = "{{ diff.delta_moved }}"
+{% endif -%}
+{% if "diff.delta_conflict" is set %}
 "diff.delta.conflict" = "{{ diff.delta_conflict }}"
-# "diff.delta.gutter"
-"ui.background" = "{{ bg }}"
-"background.separator" = "{{ accent }}"
-# "cursor"
-"ui.cursor.normal" = { bg = "{{ mode.normal_2nd }}", fg = "{{ alt_fg }}" }
-"cursor.insert" = { bg = "{{ mode.insert_2nd }}", fg = "{{ alt_fg }}" }
-"cursor.select" = { bg = "{{ mode.select_2nd }}", fg = "{{ alt_fg }}" }
-"cursor.match" = { fg = "{{ match }}", modifiers = ["bold"], underline.style = "line" }
-# "ui.cursor.primary"
-"ui.cursor.primary.normal" = { bg = "{{ mode.normal }}", fg = "{{ alt_fg }}" }
-"cursor.primary.insert" = { bg = "{{ mode.insert }}", fg = "{{ alt_fg }}" }
-"cursor.primary.select" = { bg = "{{ mode.select }}", fg = "{{ alt_fg }}" }
-"debug.breakpoint" = "{{ debug.breakpoint }}"
+{% endif -%}
+{# "diff.delta.gutter" #}
+"ui.background" = { bg = "{{ bg }}" }
+"ui.background.separator" = "{{ accent }}"
+"cursor" = { bg = "{{ mode.normal_2nd }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.cursor.normal" = { bg = "{{ mode.normal_2nd }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.cursor.insert" = { bg = "{{ mode.insert_2nd }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.cursor.select" = { bg = "{{ mode.select_2nd }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.cursor.match" = { fg = "{{ match }}", modifiers = ["bold"], underline = { color = "{{ match }}", style = "line" } }
+"ui.cursor.primary" = { bg = "{{ mode.normal }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.cursor.primary.normal" = { bg = "{{ mode.normal }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.cursor.primary.insert" = { bg = "{{ mode.insert }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.cursor.primary.select" = { bg = "{{ mode.select }}", fg = "{{ fg_alt }}", modifiers = ["bold"] }
+"ui.debug.breakpoint" = "{{ debug.breakpoint }}"
 "ui.debug.active" = "{{ debug.active }}"
-# "ui.gutter"
-# "ui.gutter.selected"
+{# "ui.gutter" #}
+{# "ui.gutter.selected" #}
 "ui.linenr" = "{{ guide_linenum }}"
-"linenr.selected" = { fg = "{{ accent_linenum }}", modifiers = ["bold"] }
-"statusline" = { bg = "{{ toolbar }}", fg = "{{ fg }}" }
-"statusline.inactive" = { modifiers = ["dim"] }
-"ui.statusline.normal" = { bg = "{{ mode.normal }}", fg = "{{ alt_fg }}" }
-"statusline.insert" = { bg = "{{ mode.insert }}", fg = "{{ alt_fg }}" }
-"statusline.select" = { bg = "{{ mode.select }}", fg = "{{ alt_fg }}" }
-"statusline.separator" = { fg = "{{ accent_separator }}", modifiers = ["bold"] }
-"bufferline" = { fg = "{{ inactive }}" }
-"bufferline.active" = { fg = "{{ accent }}", modifiers = ["bold"], style = "double_line" }
-"ui.bufferline.background" = { bg = "{{ alt_toolbar }}" }
-"popup" = { bg = "{{ toolbar_popup }}", fg = "{{ accent_popup }}" }
-# "popup.info"
-# "ui.picker.header"
-# "ui.picker.header.column"
+"ui.linenr.selected" = { fg = "{{ accent_linenum }}", modifiers = ["bold"] }
+"ui.statusline" = { bg = "{{ toolbar }}", fg = "{{ fg }}" }
+"ui.statusline.inactive" = "{{ inactive }}"
+"ui.statusline.normal" = { bg = "{{ mode.normal }}", fg = "{{ fg_alt }}" }
+"ui.statusline.insert" = { bg = "{{ mode.insert }}", fg = "{{ fg_alt }}" }
+"ui.statusline.select" = { bg = "{{ mode.select }}", fg = "{{ fg_alt }}" }
+"ui.statusline.separator" = { fg = "{{ accent_2nd }}", modifiers = ["bold"] }
+"ui.bufferline" = { fg = "{{ inactive }}" }
+"ui.bufferline.active" = { fg = "{{ accent }}", modifiers = ["bold"], underline = { color = "{{ accent }}", style = "double_line" } }
+{% if "toolbar_alt" is set %}
+"ui.bufferline.background" = { bg = "{{ toolbar_alt }}" }
+{% endif -%}
+"ui.popup" = { bg = "{{ toolbar_popup }}", fg = "{{ accent_popup }}" }
+{# "popup.info" #}
+{# "ui.picker.header" #}
+{# "ui.picker.header.column" #}
 "ui.picker.header.column.active" = { modifiers = ["bold"], underline = { color = "{{ accent_separator }}", style = "line" } }
-"window" = "{{ accent_separator }}"
-"help" = { fg = "{{ accent_popup }}", bg = "{{ toolbar }}" }
-"text" = "{{ fg }}"
-"text.focus" = { bg = "{{ focus }}" }
-"text.inactive" = { fg = "{{ inactive }}" }
-# "text.info"
+"ui.window" = "{{ accent_separator }}"
+"ui.help" = { bg = "{{ toolbar_popup }}", fg = "{{ accent_popup }}" }
+"ui.text" = "{{ fg }}"
+"ui.text.focus" = { bg = "{{ focus }}" }
+"ui.text.inactive" = { fg = "{{ inactive }}" }
+{# "ui.text.info" #}
 "ui.text.directory" = "{{ accent_2nd }}"
-"virtual.ruler" = { bg = "{{ guide_ruler }}" }
-"virtual.whitespace" = "{{ guide_whitespace }}"
-"virtual.indent-guide" = "{{ guide }}"
-"virtual.inlay-hint" = { bg = "{{ alt_bg }}", fg = "{{ guide_inlay }}", modifiers = [
-  "italic",
-] }
-# "virtual.inlay-hint.parameter"
-# "ui.virtual.inlay-hint.type"
+"ui.virtual.ruler" = { bg = "{{ guide_ruler }}" }
+"ui.virtual.whitespace" = "{{ guide_whitespace }}"
+"ui.virtual.indent-guide" = "{{ guide }}"
+{% if "bg_alt" is set %}
+"ui.virtual.inlay-hint".bg = "{{ bg_alt }}"
+{% endif %}
+"ui.virtual.inlay-hint".fg = "{{ guide_inlay }}"
+"ui.virtual.inlay-hint".modifiers = ["italic"]
+{# "ui.virtual.inlay-hint.parameter" #}
+{# "ui.virtual.inlay-hint.type" #}
 "ui.virtual.wrap" = "{{ guide_whitespace }}"
-"virtual.jump-label" = { fg = "{{ match }}", modifiers = ["bold", "italic"] }
-"menu" = { bg = "{{ toolbar }}" }
-"menu.selected" = { fg = "{{ accent }}", modifiers = ["bold"], underline.style = "line" }
-"menu.scroll" = { bg = "{{ toolbar }}", fg = "{{ accent }}" }
-"selection" = { bg = "{{ select_2nd }}" }
-"selection.primary" = { bg = "{{ select }}" }
-"highlight" = { bg = "{{ select }}" }
-"highlight.frameline" = { bg = "{{ debug.frameline }}" }
+"ui.virtual.jump-label" = { fg = "{{ match }}", modifiers = ["bold", "italic"] }
+"ui.menu" = { bg = "{{ toolbar }}" }
+"ui.menu.selected" = { fg = "{{ accent }}", modifiers = ["bold"], underline = { color = "{{ accent }}", style = "line" } }
+"ui.menu.scroll" = { bg = "{{ toolbar }}", fg = "{{ accent }}" }
+"ui.selection" = { bg = "{{ select_2nd }}" }
+"ui.selection.primary" = { bg = "{{ select }}" }
+"ui.highlight" = { bg = "{{ select }}" }
+"ui.highlight.frameline" = { bg = "{{ debug.frameline }}" }
 "ui.cursorline.primary" = { bg = "{{ focus }}" }
-# "cursorline.secondary"
+{# "cursorline.secondary" #}
 "ui.cursorcolumn.primary" = { bg = "{{ focus }}" }
-# "cursorcolumn.secondary"
-"warning" = { bg = "{{ toolbar_popup }}", fg = "{{ warning }}", underline = { color = "{{ warning }}", style = "curl" } }
-"error" = { bg = "{{ toolbar_popup }}", fg = "{{ error }}", underline = { color = "{{ error }}", style = "curl" } }
-"info" = { bg = "{{ toolbar_popup }}", fg = "{{ info }}", underline = { color = "{{ info }}", style = "curl" } }
-"hint" = { bg = "{{ toolbar_popup }}", fg = "{{ hint }}", underline = { color = "{{ hint }}", style = "curl" } }
+{# "cursorcolumn.secondary" #}
+"warning" = { fg = "{{ warning }}", modifiers = ["italic"] }
+"error" = { fg = "{{ error }}", modifiers = ["italic"] }
+"info" = { fg = "{{ info }}", modifiers = ["italic"] }
+"hint" = { fg = "{{ hint }}", modifiers = ["italic"] }
 "diagnostic" = { underline = { color = "{{ fg }}", style = "curl" } }
-"unnecessary" = { underline = { color = "{{ unnecessary }}", style = "dotted" } }
-"deprecated" = { modifiers = ["crossed_out"] }
-"tabstop" = { modifiers = ["italic"] }
+"diagnostic.hint" = { underline = { color = "{{ hint }}", style = "curl" } }
+"diagnostic.info" = { underline = { color = "{{ info }}", style = "curl" } }
+"diagnostic.warning" = { underline = { color = "{{ warning }}", style = "curl" } }
+"diagnostic.error" = { underline = { color = "{{ error }}", style = "curl" } }
+"diagnostic.unnecessary" = { modifiers = ["dim"] }
+"diagnostic.deprecated" = { modifiers = ["crossed_out"] }
+{% if "bg_alt" is set %}
+"tabstop".bg = "bg_alt"
+{% endif -%}
+"tabstop".modifiers = ["italic"]
+{% if "syntax.punctuation_rainbow1" is set
+  or "syntax.punctuation_rainbow2" is set
+  or "syntax.punctuation_rainbow3" is set
+  or "syntax.punctuation_rainbow4" is set
+  or "syntax.punctuation_rainbow5" is set
+  or "syntax.punctuation_rainbow6" is set
+%}
+"rainbow" = [
+  "{{ syntax.punctuation_rainbow1 }}",
+  "{{ syntax.punctuation_rainbow2 }}",
+  "{{ syntax.punctuation_rainbow3 }}",
+  "{{ syntax.punctuation_rainbow4 }}",
+  "{{ syntax.punctuation_rainbow5 }}",
+  "{{ syntax.punctuation_rainbow6 }}",
+]
+{% endif %}
 
 [palette]
 {% for swatch in palette %}
