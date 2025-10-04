@@ -1,4 +1,5 @@
 /target
 /render
 
+.direnv/
 .idea/
