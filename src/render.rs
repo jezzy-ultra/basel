@@ -1,21 +1,41 @@
 use std::fs;
+use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use log::{info, warn};
+use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 
-use crate::scheme::Scheme;
-use crate::template::Templates;
-use crate::{Config, Result};
+use crate::schemes::Scheme;
+use crate::templates::Loader;
+use crate::upstream::GitCache;
+use crate::{Result, upstream};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("failed to render template `{template}` with scheme `{scheme}`: {src}")]
+    Rendering {
+        template: String,
+        scheme: String,
+        src: JinjaError,
+    },
+    #[error("failed to create output directory `{path}`: {src}")]
+    CreatingDirectory { path: String, src: IoError },
+    #[error("failed to write rendered file `{path}`: {src}")]
+    WritingFile { path: String, src: IoError },
+    #[error("{0}")]
+    InternalBug(String),
+}
 
 #[derive(Default)]
-struct RenderConfig {
+struct Config {
     render_swatch_names: bool,
 }
 
-impl RenderConfig {
+impl Config {
     fn parse_bool(directive: &str, val: &str, template_name: &str) -> bool {
-        match val.to_lowercase().as_str() {
+        match val {
             "true" => true,
             "false" => false,
             _ => {
@@ -30,12 +50,13 @@ impl RenderConfig {
     }
 
     fn parse(directives: &IndexMap<String, String>, template_name: &str) -> Self {
-        let mut config = Self::default();
+        let mut render_cfg = Self::default();
 
         for (directive, val) in directives {
             match directive.as_str() {
                 "render_swatch_names" => {
-                    config.render_swatch_names = Self::parse_bool(directive, val, template_name);
+                    render_cfg.render_swatch_names =
+                        Self::parse_bool(directive, val, template_name);
                 }
                 _ => {
                     warn!(
@@ -46,7 +67,7 @@ impl RenderConfig {
             }
         }
 
-        config
+        render_cfg
     }
 }
 
@@ -55,23 +76,33 @@ fn uses_swatch_iteration(template_name: &str) -> bool {
 }
 
 fn resolve_path(
-    config: &Config,
+    cfg: &crate::Config,
     template_name: &str,
     scheme_name: &str,
     swatch_name: Option<&str>,
-) -> PathBuf {
+) -> Result<PathBuf> {
     let relative_path = template_name
         .strip_suffix(".jinja")
         .unwrap_or(template_name);
 
     let filename = Path::new(relative_path)
         .file_name()
-        .unwrap()
+        .ok_or_else(|| {
+            Error::InternalBug(format!(
+                "attempted to render to corrupted path `{relative_path}`"
+            ))
+        })?
         .to_string_lossy();
 
     let parent_dirs = Path::new(relative_path)
         .parent()
         .unwrap_or_else(|| Path::new(""));
+
+    if swatch_name.is_some() && !filename.contains("SWATCH") {
+        log::warn!(
+            "`{template_name}` has `SWATCH` in its name but doesn't use it inside the template"
+        );
+    }
 
     let output = swatch_name.map_or_else(
         || filename.replace("SCHEME", scheme_name),
@@ -82,53 +113,159 @@ fn resolve_path(
         },
     );
 
-    Path::new(&config.output_dir)
+    Ok(Path::new(&cfg.dirs.render)
         .join(scheme_name)
         .join(parent_dirs)
-        .join(output)
+        .join(output))
 }
 
-fn write_file(
+fn file(
     template: &minijinja::Template<'_, '_>,
-    context: serde_json::Map<String, serde_json::Value>,
+    scheme_name: &str,
+    context: &JsonMap<String, JsonValue>,
     output_path: &PathBuf,
 ) -> Result<()> {
-    let rendered = template.render(context)?;
-
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)?;
+    if !context.contains_key("_set") {
+        return Err(Error::InternalBug("context missing `_set`".to_owned()).into());
     }
 
-    fs::write(output_path, rendered)?;
+    let rendered = template.render(context).map_err(|src| match src.kind() {
+        JinjaErrorKind::UndefinedError => Error::InternalBug(format!("{src}")),
+        _ => Error::Rendering {
+            template: template.name().to_owned(),
+            scheme: scheme_name.to_owned(),
+            src,
+        },
+    })?;
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|src| Error::CreatingDirectory {
+            path: parent.to_string_lossy().to_string(),
+            src,
+        })?;
+    }
+
+    fs::write(output_path, rendered).map_err(|src| Error::WritingFile {
+        path: output_path.to_string_lossy().to_string(),
+        src,
+    })?;
     info!("Generated: {}", output_path.display());
 
     Ok(())
 }
 
+fn build_upstream(
+    git_cache: &mut GitCache,
+    render_path: &Path,
+    scheme_name: &str,
+    cfg: &crate::Config,
+) -> Option<String> {
+    let upstream_cfg = cfg.upstream.as_ref();
+
+    let (git_info, rel_path) =
+        if let Some(repo_path) = upstream_cfg.and_then(|u| u.repo_path.as_ref()) {
+            let git_info = git_cache.get_or_detect(repo_path);
+            if git_info.is_none() {
+                warn!(
+                    "failed to detect git repo at set `repo_path`: `{}`",
+                    repo_path.display()
+                );
+                return None;
+            }
+            let git_info = git_info?;
+
+            let prefix = Path::new(&cfg.dirs.render).join(scheme_name);
+            let rel_path = render_path.strip_prefix(&prefix).ok();
+            if rel_path.is_none() {
+                warn!(
+                    "failed to strip prefix `{}` from render path `{}`",
+                    prefix.display(),
+                    render_path.display()
+                );
+                return None;
+            }
+            let rel_path = rel_path?;
+
+            (git_info, rel_path.to_path_buf())
+        } else {
+            let abs_path = render_path.canonicalize().ok();
+            if abs_path.is_none() {
+                warn!(
+                    "failed to canonicalize render path `{}`; file may not exist yet",
+                    render_path.display()
+                );
+            }
+            let abs_path = abs_path?;
+
+            let git_info = git_cache.get_or_detect(&abs_path);
+            if git_info.is_none() {
+                warn!(
+                    "failed to detect git repo for render path `{}`",
+                    abs_path.display()
+                );
+                return None;
+            }
+            let git_info = git_info?;
+
+            let rel_path = abs_path.strip_prefix(&git_info.root).ok();
+            if rel_path.is_none() {
+                warn!(
+                    "path `{}` isn't under git root `{}`",
+                    abs_path.display(),
+                    git_info.root.display()
+                );
+                return None;
+            }
+            let rel_path = rel_path?;
+
+            (git_info, rel_path.to_path_buf())
+        };
+
+    let pattern_override = upstream_cfg.and_then(|u| u.pattern.as_deref());
+    let branch_override = upstream_cfg.and_then(|u| u.branch.as_deref());
+
+    Some(upstream::build_url(
+        &git_info,
+        &rel_path,
+        pattern_override,
+        branch_override,
+    ))
+}
+
 pub fn all(
-    config: &Config,
-    templates: &Templates,
+    cfg: &crate::Config,
+    templates: &Loader,
     schemes: &IndexMap<String, Scheme>,
 ) -> Result<()> {
     for (template_name, (template, directives)) in templates.templates_with_directives() {
-        let render_config = RenderConfig::parse(&directives, template_name);
+        let render_cfg = Config::parse(&directives, template_name);
+        let mut git_cache = GitCache::new();
 
         if uses_swatch_iteration(template_name) {
             for (scheme_name, scheme) in schemes {
                 for swatch_name in scheme.palette.keys() {
-                    let path = resolve_path(config, template_name, scheme_name, Some(swatch_name));
-                    let context =
-                        scheme.create_context(render_config.render_swatch_names, Some(swatch_name));
+                    let path = resolve_path(cfg, template_name, scheme_name, Some(swatch_name))?;
+                    let upstream_url = build_upstream(&mut git_cache, &path, scheme_name, cfg);
+                    let ctx = scheme.to_context(
+                        render_cfg.render_swatch_names,
+                        Some(swatch_name),
+                        upstream_url.as_deref(),
+                    )?;
 
-                    write_file(&template, context, &path)?;
+                    file(&template, scheme_name, &ctx, &path)?;
                 }
             }
         } else {
             for (scheme_name, scheme) in schemes {
-                let path = resolve_path(config, template_name, scheme_name, None);
-                let context = scheme.create_context(render_config.render_swatch_names, None);
+                let path = resolve_path(cfg, template_name, scheme_name, None)?;
+                let upstream_url = build_upstream(&mut git_cache, &path, scheme_name, cfg);
+                let ctx = scheme.to_context(
+                    render_cfg.render_swatch_names,
+                    None,
+                    upstream_url.as_deref(),
+                )?;
 
-                write_file(&template, context, &path)?;
+                file(&template, scheme_name, &ctx, &path)?;
             }
         }
     }

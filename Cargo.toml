@@ -2,17 +2,37 @@
 name = "basel"
 version = "0.1.0"
 edition = "2024"
+description = "full-fat color scheme engine. write once, theme everything."
+readme = "README.md"
+repository = "https://github.com/jezzy-ultra/basel"
+license = "GPLv3"
+keywords = ["color", "colorscheme", "generator", "palette", "theme"]
+categories = [
+  "command-line-utilities",
+  "config",
+  "development-tools",
+  "template-engine",
+]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
+git-url-parse = "0.6"
+git2 = "0.20"
 hex_color = { version = "3", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
+indoc = "2"
 log = "0.4"
-minijinja = { version = "2", features = ["json", "loader", "preserve_order"] }
-phf = { version = "0.13", features = ["macros"] }
+minijinja = { version = "2", features = [
+  "json",
+  "loader",
+  "preserve_order",
+  "unicode",
+] }
+owo-colors = { version = "4", features = ["supports-colors"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+shellexpand = "3"
 thiserror = "2"
 toml = { version = "0.9", features = [
   "display",
@@ -22,8 +42,12 @@ toml = { version = "0.9", features = [
 ] }
 walkdir = "2"
 
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"
+
 [lints.clippy]
-# absolute_paths = "warn"
+absolute_paths = "warn"
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
 # arbitrary_source_item_ordering = "warn"
@@ -51,7 +75,7 @@ empty_enum_variants_with_brackets = "warn"
 empty_structs_with_brackets = "warn"
 equatable_if_let = "warn"
 exit = "warn"
-# expect_used = "warn"
+expect_used = "warn"
 fallible_impl_from = "warn"
 field_scoped_visibility_modifiers = "warn"
 filetype_is_file = "warn"
@@ -86,6 +110,7 @@ missing_docs_in_private_items = "warn"
 mixed_read_write_in_expression = "warn"
 mod_module_files = "warn"
 module_name_repetitions = "warn"
+multiple_crate_versions = "allow"
 multiple_inherent_impl = "warn"
 multiple_unsafe_ops_per_block = "warn"
 needless_collect = "warn"
@@ -142,7 +167,7 @@ unnecessary_safety_doc = "warn"
 unnecessary_self_imports = "warn"
 unnecessary_struct_initialization = "warn"
 unneeded_field_pattern = "warn"
-# unreachable = "warn"
+unreachable = "warn"
 unseparated_literal_suffix = "warn"
 unused_peekable = "warn"
 unused_result_ok = "warn"
@@ -154,3 +179,55 @@ use_self = "warn"
 useless_let_if_seq = "warn"
 verbose_file_reads = "warn"
 while_float = "warn"
+
+[lints.rust]
+absolute_paths_not_starting_with_crate = "warn"
+ambiguous_negative_literals = "warn"
+closure_returning_async_block = "warn"
+deprecated_safe_2024 = "warn"
+deref_into_dyn_supertrait = "warn"
+elided_lifetimes_in_paths = "warn"
+explicit_outlives_requirements = "warn"
+fuzzy_provenance_casts = "warn"
+if_let_rescope = "warn"
+impl_trait_overcaptures = "warn"
+impl_trait_redundant_captures = "warn"
+keyword_idents_2024 = "deny"
+let_underscore_drop = "warn"
+lossy_provenance_casts = "warn"
+macro_use_extern_crate = "deny"
+meta_variable_misuse = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+missing_unsafe_on_extern = "deny"
+multiple_supertrait_upcastable = "warn"
+must_not_suspend = "warn"
+# non_exhaustive_omitted_patterns = "warn"
+redundant_imports = "deny"
+redundant_lifetimes = "deny"
+rust_2024_guarded_string_incompatible_syntax = "deny"
+rust_2024_incompatible_pat = "deny"
+rust_2024_prelude_collisions = "deny"
+single_use_lifetimes = "deny"
+supertrait_item_shadowing_definition = "warn"
+supertrait_item_shadowing_usage = "warn"
+tail_expr_drop_order = "warn"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+unit_bindings = "warn"
+unnameable_types = "warn"
+unqualified_local_imports = "deny"
+unreachable_pub = "deny"
+unsafe_attr_outside_unsafe = "warn"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_extern_crates = "warn"
+unused_import_braces = "deny"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
+variant_size_differences = "warn"
+
+[lints.rustdoc]
+missing_crate_level_docs = "warn"
+unescaped_backticks = "warn"

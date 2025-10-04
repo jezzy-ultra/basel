@@ -1,18 +1,35 @@
-#![allow(clippy::cargo_common_metadata, reason = "todo: documentation")]
-#![allow(clippy::missing_docs_in_private_items, reason = "todo: documentation")]
-#![allow(clippy::missing_errors_doc, reason = "todo: documentation")]
-#![allow(clippy::missing_panics_doc, reason = "todo: better error handling")]
-#![allow(clippy::panic_in_result_fn, reason = "todo: better error handling")]
-#![allow(clippy::panic, reason = "todo: better error handling")]
-#![allow(clippy::unwrap_used, reason = "todo: better error handling")]
+//! full-fat color scheme engine. write once, theme everything.
+//!
+//! # terminology
+//! - Port
 
-use basel::template::Templates;
-use basel::{Config, Result, render, scheme};
+#![feature(unqualified_local_imports)]
+#![feature(supertrait_item_shadowing)]
+#![feature(non_exhaustive_omitted_patterns_lint)]
+#![feature(must_not_suspend)]
+#![feature(multiple_supertrait_upcastable)]
+#![feature(strict_provenance_lints)]
+
+use std::path::PathBuf;
+
+use basel::templates::Loader;
+use basel::{Config, Result, Upstream, render, schemes};
 
 fn main() -> Result<()> {
-    let cfg = Config::default();
-    let templates = Templates::new(&cfg.template_dir)?;
-    let schemes = scheme::load_all(&cfg.scheme_dir)?;
+    env_logger::init();
+
+    let expanded = shellexpand::tilde("~/src/cutiepro");
+    let repo_path = PathBuf::from(expanded.as_ref());
+    let cfg = Config {
+        upstream: Some(Upstream {
+            repo_path: Some(repo_path),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let templates = Loader::new(&cfg.dirs.templates, &cfg.ignored_directives)?;
+    let schemes = schemes::load_all(&cfg.dirs.schemes)?;
 
     render::all(&cfg, &templates, &schemes)?;
 
