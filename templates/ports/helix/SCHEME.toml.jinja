@@ -124,7 +124,7 @@
 {# "markup.normal" #}
 {# "markup.normal.completion" #}
 {# "markup.normal.hover" #}
-"markup.heading" = { fg = "{{ markup.heading }}", modifiers = ["bold"] }
+{# "markup.heading" #}
 {# "markup.heading.marker" #}
 "markup.heading.1" = { fg = "{{ markup.heading }}", modifiers = ["bold"] }
 {% if "markup.heading_2nd" is set %}
@@ -258,8 +258,8 @@
 "error" = { fg = "{{ error }}", modifiers = ["italic"] }
 "info" = { fg = "{{ info }}", modifiers = ["italic"] }
 "hint" = { fg = "{{ hint }}", modifiers = ["italic"] }
-"diagnostic" = { underline = { color = "{{ fg }}", style = "curl" } }
-"diagnostic.hint" = { underline = { color = "{{ hint }}", style = "curl" } }
+"diagnostic" = { underline = { color = "{{ fg }}", style = "dotted" } }
+"diagnostic.hint" = { underline = { color = "{{ hint }}", style = "dotted" } }
 "diagnostic.info" = { underline = { color = "{{ info }}", style = "curl" } }
 "diagnostic.warning" = { underline = { color = "{{ warning }}", style = "curl" } }
 "diagnostic.error" = { underline = { color = "{{ error }}", style = "curl" } }
