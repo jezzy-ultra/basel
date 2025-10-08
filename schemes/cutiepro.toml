@@ -158,7 +158,7 @@ raw = "$sour_apple"
 
 [slots.ansi]
 black = "$raven"
-black_bright = "$charcoal"
+black_bright = "$soil"
 red = "$strawberry"
 red_bright = "$sand"
 green = "$sour_apple"
