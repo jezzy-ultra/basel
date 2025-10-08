@@ -5,3 +5,4 @@
 - put extra settings back into the kitty template?
 - investigate options around preventing unicode errors in rendered ports
   (`kitten themes` hard froze my laptop when cutiepro had a `♡` in its blurb)
+- add json schema for schemes?
