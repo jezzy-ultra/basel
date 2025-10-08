@@ -1,0 +1,13 @@
+[package]
+name = "simple-palettes"
+version.workspace = true
+edition.workspace = true
+description = "color picker palettes!!"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true

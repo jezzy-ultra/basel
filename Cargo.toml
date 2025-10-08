@@ -1,5 +1,8 @@
-[package]
-name = "basel"
+[workspace]
+resolver = "3"
+members = ["basel", "simple-palettes"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 description = "full-fat color scheme engine. write once, theme everything."
@@ -14,7 +17,7 @@ categories = [
   "template-engine",
 ]
 
-[dependencies]
+[workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 git-url-parse = "0.6"
@@ -30,9 +33,11 @@ minijinja = { version = "2", features = [
   "unicode",
 ] }
 owo-colors = { version = "4", features = ["supports-colors"] }
+pretty_assertions = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 shellexpand = "3"
+tempfile = "3"
 thiserror = "2"
 toml = { version = "0.9", features = [
   "display",
@@ -42,11 +47,7 @@ toml = { version = "0.9", features = [
 ] }
 walkdir = "2"
 
-[dev-dependencies]
-pretty_assertions = "1"
-tempfile = "3"
-
-[lints.clippy]
+[workspace.lints.clippy]
 absolute_paths = "warn"
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
@@ -180,7 +181,7 @@ useless_let_if_seq = "warn"
 verbose_file_reads = "warn"
 while_float = "warn"
 
-[lints.rust]
+[workspace.lints.rust]
 absolute_paths_not_starting_with_crate = "warn"
 ambiguous_negative_literals = "warn"
 closure_returning_async_block = "warn"
@@ -228,6 +229,6 @@ unused_macro_rules = "warn"
 unused_qualifications = "warn"
 variant_size_differences = "warn"
 
-[lints.rustdoc]
+[workspace.lints.rustdoc]
 missing_crate_level_docs = "warn"
 unescaped_backticks = "warn"
