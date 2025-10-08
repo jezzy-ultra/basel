@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::{Formatter, Result as FmtResult};
 use std::fs;
 use std::io::Error as IoError;
@@ -12,7 +13,7 @@ use minijinja::Value as JinjaValue;
 use minijinja::value::{Enumerator, Object as JinjaObject};
 use serde::de::Error as SerdeDeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{Error as JsonError, Map as JsonMap, Value as JsonValue, json};
+use serde_json::Error as JsonError;
 use toml::de::Error as TomlDeError;
 use toml::{Table, Value as TomlValue};
 use walkdir::WalkDir;
@@ -113,52 +114,7 @@ impl<'de> Deserialize<'de> for Swatch {
     }
 }
 
-trait SwatchExt {
-    fn to_rich_object(&self, name: &str) -> JsonValue;
-}
-
-#[must_use]
-pub fn create_rgb_objects(r: u8, g: u8, b: u8) -> (JsonValue, JsonValue) {
-    let rgb_obj = json!({
-        "r": r,
-        "g": g,
-        "b": b,
-    });
-    let rgb_u_obj = json!({
-        "r": f64::from(r) / 255.0,
-        "g": f64::from(g) / 255.0,
-        "b": f64::from(b) / 255.0,
-    });
-
-    (rgb_obj, rgb_u_obj)
-}
-
-#[must_use]
-pub fn create_rgb_values(rgb: (u8, u8, u8)) -> (JinjaValue, JinjaValue) {
-    let (r, g, b) = rgb;
-    let (rgb_obj, rgb_u_obj) = create_rgb_objects(r, g, b);
-
-    (
-        JinjaValue::from_serialize(rgb_obj),
-        JinjaValue::from_serialize(rgb_u_obj),
-    )
-}
-
-impl SwatchExt for Swatch {
-    fn to_rich_object(&self, name: &str) -> JsonValue {
-        let (r, g, b) = self.hex().split_rgb();
-        let (rgb_obj, rgb_u_obj) = create_rgb_objects(r, g, b);
-
-        json!({
-            "name": name,
-            "hex": self.to_string(),
-            "rgb": rgb_obj,
-            "rgb_u": rgb_u_obj,
-        })
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct ColorObject {
     hex: String,
     name: String,
@@ -191,38 +147,22 @@ impl JinjaObject for ColorObject {
     }
 
     fn get_value(self: &Arc<Self>, key: &JinjaValue) -> Option<JinjaValue> {
+        let (r, g, b) = self.rgb;
         match key.as_str()? {
             "hex" => Some(JinjaValue::from(&self.hex)),
             "name" => Some(JinjaValue::from(&self.name)),
-            "rgb" | "rgb_u" => {
-                let (rgb_val, rgb_u_val) = create_rgb_values(self.rgb);
-                Some(if key.as_str()? == "rgb" {
-                    rgb_val
-                } else {
-                    rgb_u_val
-                })
-            }
+            "r" => Some(JinjaValue::from(r)),
+            "g" => Some(JinjaValue::from(g)),
+            "b" => Some(JinjaValue::from(b)),
+            "rf" => Some(JinjaValue::from(f64::from(r) / 255.0)),
+            "gf" => Some(JinjaValue::from(f64::from(g) / 255.0)),
+            "bf" => Some(JinjaValue::from(f64::from(b) / 255.0)),
             _ => None,
         }
     }
 
     fn enumerate(self: &Arc<Self>) -> Enumerator {
-        Enumerator::Str(&["hex", "name", "rgb", "rgb_u"])
-    }
-}
-
-impl Serialize for ColorObject {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let rendered = if self.render_as_name {
-            &self.name
-        } else {
-            &self.hex
-        };
-
-        serializer.serialize_str(rendered)
+        Enumerator::Str(&["hex", "name", "r", "g", "b", "rf", "gf", "bf"])
     }
 }
 
@@ -381,24 +321,26 @@ pub struct Scheme {
 }
 
 impl Scheme {
-    fn insert_static_fields(&self, ctx: &mut JsonMap<String, JsonValue>) -> Result<()> {
+    fn insert_static_fields(&self, ctx: &mut BTreeMap<String, JinjaValue>) {
         ctx.insert(
             "SCHEME".to_owned(),
-            serde_json::to_value(&self.scheme).map_err(|src| Error::Serializing { src })?,
+            JinjaValue::from_serialize(&self.scheme),
         );
-        ctx.insert(
-            "meta".to_owned(),
-            serde_json::to_value(&self.meta).map_err(|src| Error::Serializing { src })?,
-        );
+        ctx.insert("meta".to_owned(), JinjaValue::from_serialize(&self.meta));
 
-        let palette: Vec<JsonValue> = self
+        let palette: Vec<JinjaValue> = self
             .palette
             .iter()
-            .map(|(name, swatch)| swatch.to_rich_object(name))
+            .map(|(name, swatch)| {
+                JinjaValue::from_serialize(ColorObject {
+                    hex: swatch.to_string(),
+                    name: name.clone(),
+                    rgb: swatch.hex().split_rgb(),
+                    render_as_name: false,
+                })
+            })
             .collect();
-        ctx.insert("palette".to_owned(), JsonValue::Array(palette));
-
-        Ok(())
+        ctx.insert("palette".to_owned(), JinjaValue::from(palette));
     }
 
     fn rgb(&self, slot_name: &SlotName, resolved_slot: &ResolvedSlot) -> Result<(u8, u8, u8)> {
@@ -414,28 +356,21 @@ impl Scheme {
     }
 
     fn insert_grouped_slot(
-        ctx: &mut JsonMap<String, JsonValue>,
+        groups: &mut BTreeMap<String, BTreeMap<String, JinjaValue>>,
         group: &str,
         key: &str,
         slot_obj: ColorObject,
-    ) -> Result<()> {
-        let group_obj = ctx
+    ) {
+        groups
             .entry(group.to_owned())
-            .or_insert_with(|| JsonValue::Object(JsonMap::new()));
-
-        if let JsonValue::Object(group_map) = group_obj {
-            group_map.insert(
-                key.to_owned(),
-                serde_json::to_value(slot_obj).map_err(|src| Error::Serializing { src })?,
-            );
-        }
-
-        Ok(())
+            .or_default()
+            .insert(key.to_owned(), JinjaValue::from_object(slot_obj));
     }
 
     fn insert_slot(
         &self,
-        ctx: &mut JsonMap<String, JsonValue>,
+        ctx: &mut BTreeMap<String, JinjaValue>,
+        groups: &mut BTreeMap<String, BTreeMap<String, JinjaValue>>,
         slot_name: &SlotName,
         resolved_slot: &ResolvedSlot,
         render_swatch_names: bool,
@@ -443,7 +378,7 @@ impl Scheme {
         let parts: Vec<&str> = slot_name.split('.').collect();
         let rgb = self.rgb(slot_name, resolved_slot)?;
 
-        let slot_obj = ColorObject::new(
+        let obj = ColorObject::new(
             resolved_slot.hex.clone(),
             resolved_slot.swatch_name.clone(),
             rgb,
@@ -452,13 +387,10 @@ impl Scheme {
 
         match parts.as_slice() {
             [key] => {
-                ctx.insert(
-                    (*key).to_owned(),
-                    serde_json::to_value(&slot_obj).map_err(|src| Error::Serializing { src })?,
-                );
+                ctx.insert((*key).to_owned(), JinjaValue::from_object(obj));
             }
             [group, key] => {
-                Self::insert_grouped_slot(ctx, group, key, slot_obj)?;
+                Self::insert_grouped_slot(groups, group, key, obj);
             }
             _ => {
                 return Err(Error::InternalBug(format!(
@@ -472,51 +404,47 @@ impl Scheme {
 
     fn insert_current_swatch(
         &self,
-        ctx: &mut JsonMap<String, JsonValue>,
+        ctx: &mut BTreeMap<String, JinjaValue>,
         swatch_name: &str,
         render_swatch_names: bool,
     ) -> Result<()> {
         let swatch = self.palette.get(swatch_name).ok_or_else(|| {
             Error::InternalBug(format!(
-                "current swatch `{swatch_name}` not in palette, but should should only be \
-                 receiving valid swatch names"
+                "current swatch `{swatch_name}` not in palette, but we should only be receiving \
+                 valid swatch names"
             ))
         })?;
 
         let rgb = swatch.hex().split_rgb();
-        let swatch_obj = ColorObject::new(
+        let obj = ColorObject::new(
             swatch.to_string(),
             swatch_name.to_owned(),
             rgb,
             render_swatch_names,
         );
-        let swatch_val = JinjaValue::from_object(swatch_obj);
 
-        ctx.insert(
-            "SWATCH".to_owned(),
-            serde_json::to_value(swatch_val).map_err(|src| Error::Serializing { src })?,
-        );
+        ctx.insert("SWATCH".to_owned(), JinjaValue::from_object(obj));
 
         Ok(())
     }
 
-    fn insert_set_test_slots(&self, ctx: &mut JsonMap<String, JsonValue>) {
+    fn insert_set_test_slots(&self, ctx: &mut BTreeMap<String, JinjaValue>) {
         let set_slots: Vec<String> = self.slots.keys().map(ToString::to_string).collect();
-        ctx.insert("_set".to_owned(), json!(set_slots));
+        ctx.insert("_set".to_owned(), JinjaValue::from(set_slots));
     }
 
-    fn insert_special_fields(ctx: &mut JsonMap<String, JsonValue>, upstream_url: Option<&str>) {
-        let mut special = JsonMap::new();
+    fn insert_special_fields(ctx: &mut BTreeMap<String, JinjaValue>, upstream_url: Option<&str>) {
+        let mut special = BTreeMap::new();
 
         if let Some(url) = upstream_url {
-            special.insert("upstream_file".to_owned(), json!(url));
+            special.insert("upstream_file".to_owned(), JinjaValue::from(url));
 
             if let Some(base) = upstream::extract_base_url(url) {
-                special.insert("upstream_repo".to_owned(), json!(base));
+                special.insert("upstream_repo".to_owned(), JinjaValue::from(base));
             }
         }
 
-        ctx.insert("special".to_owned(), JsonValue::Object(special));
+        ctx.insert("special".to_owned(), JinjaValue::from(special));
     }
 
     pub fn to_context(
@@ -524,13 +452,24 @@ impl Scheme {
         render_swatch_names: bool,
         current_swatch: Option<&str>,
         upstream_url: Option<&str>,
-    ) -> Result<JsonMap<String, JsonValue>> {
-        let mut ctx = JsonMap::new();
+    ) -> Result<BTreeMap<String, JinjaValue>> {
+        let mut ctx = BTreeMap::new();
+        let mut groups: BTreeMap<String, BTreeMap<String, JinjaValue>> = BTreeMap::new();
 
-        self.insert_static_fields(&mut ctx)?;
+        self.insert_static_fields(&mut ctx);
 
         for (slot_name, resolved_slot) in &self.resolved_slots {
-            self.insert_slot(&mut ctx, slot_name, resolved_slot, render_swatch_names)?;
+            self.insert_slot(
+                &mut ctx,
+                &mut groups,
+                slot_name,
+                resolved_slot,
+                render_swatch_names,
+            )?;
+        }
+
+        for (group_name, group_map) in groups {
+            ctx.insert(group_name, JinjaValue::from(group_map));
         }
 
         if let Some(name) = current_swatch {
@@ -645,19 +584,19 @@ mod tests {
         load(name, temp.path())
     }
 
-    fn assert_slot_hex_equals(context: &JsonMap<String, JsonValue>, slot: &str, expected: &str) {
-        let slot_obj = context
+    fn assert_slot_hex_equals(context: &BTreeMap<String, JinjaValue>, slot: &str, expected: &str) {
+        let obj = context
             .get(slot)
             .unwrap_or_else(|| panic!("slot `{slot}` not found in context`"));
-        let actual = slot_obj["hex"]
-            .as_str()
-            .unwrap_or_else(|| panic!("slot `{slot}` missing `hex` field"));
+        let actual = obj
+            .get_attr("hex")
+            .unwrap_or_else(|_| panic!("slot `{slot}` missing `hex` field"));
 
-        assert_eq!(actual, expected, "slot `{slot}` has wrong hex value");
+        assert_eq!(actual, expected.into(), "slot `{slot}` has wrong hex value");
     }
 
     fn assert_nested_slot_hex_equals(
-        context: &JsonMap<String, JsonValue>,
+        context: &BTreeMap<String, JinjaValue>,
         group: &str,
         slot: &str,
         expected: &str,
@@ -666,14 +605,15 @@ mod tests {
             .get(group)
             .unwrap_or_else(|| panic!("group `{group}` not found in context"));
         let slot_obj = group_obj
-            .get(slot)
-            .unwrap_or_else(|| panic!("slot `{group}.{slot}` not found in context"));
-        let actual = slot_obj["hex"]
-            .as_str()
-            .unwrap_or_else(|| panic!("slot `{group}.{slot}` missing `hex` field"));
+            .get_attr(slot)
+            .unwrap_or_else(|_| panic!("slot `{group}.{slot}` not found in context"));
+        let actual = slot_obj
+            .get_attr("hex")
+            .unwrap_or_else(|_| panic!("slot `{group}.{slot}` missing `hex` field"));
 
         assert_eq!(
-            actual, expected,
+            actual,
+            expected.into(),
             "slot `{group}.{slot}` has wrong hex value"
         );
     }

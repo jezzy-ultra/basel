@@ -1,15 +1,15 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use log::{info, warn};
-use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
-use serde_json::{Map as JsonMap, Value as JsonValue};
+use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind, Value as JinjaValue};
 
 use crate::schemes::Scheme;
 use crate::templates::Loader;
-use crate::upstream::GitCache;
+use crate::upstream::{GitCache, GitInfo};
 use crate::{Result, upstream};
 
 #[derive(Debug, thiserror::Error)]
@@ -122,7 +122,7 @@ fn resolve_path(
 fn file(
     template: &minijinja::Template<'_, '_>,
     scheme_name: &str,
-    context: &JsonMap<String, JsonValue>,
+    context: &BTreeMap<String, JinjaValue>,
     output_path: &PathBuf,
 ) -> Result<()> {
     if !context.contains_key("_set") {
@@ -149,9 +149,70 @@ fn file(
         path: output_path.to_string_lossy().to_string(),
         src,
     })?;
-    info!("Generated: {}", output_path.display());
+    info!("generated {}", output_path.display());
 
     Ok(())
+}
+
+fn strip_prefix(path: &Path, prefix: &Path, ctx: &str) -> Option<PathBuf> {
+    path.strip_prefix(prefix)
+        .ok()
+        .or_else(|| {
+            warn!(
+                "{ctx}... failed to strip prefix `{}` from path `{}`",
+                prefix.display(),
+                path.display()
+            );
+
+            None
+        })
+        .map(Path::to_path_buf)
+}
+
+fn git_info_with(
+    git_cache: &mut GitCache,
+    target_path: &Path,
+    ctx: &str,
+) -> Option<(GitInfo, PathBuf)> {
+    let git_info = git_cache.get_or_detect(target_path)?;
+
+    let rel_path = strip_prefix(
+        target_path,
+        &git_info.root,
+        &format!("{ctx}... path not under repo root"),
+    )?;
+
+    Some((git_info, rel_path))
+}
+
+fn resolve_with_repo_path(
+    git_cache: &mut GitCache,
+    render_path: &Path,
+    scheme_name: &str,
+    repo_path: &Path,
+    render_dir: &str,
+) -> Option<(GitInfo, PathBuf)> {
+    let prefix = Path::new(render_dir).join(scheme_name);
+    let rel_path = strip_prefix(render_path, &prefix, "configuring repo_path mode")?;
+
+    let target_path = repo_path.join(&rel_path);
+    git_info_with(git_cache, &target_path, "configuring repo_path mode")
+}
+
+fn resolve_with_autodetect(
+    git_cache: &mut GitCache,
+    render_path: &Path,
+) -> Option<(GitInfo, PathBuf)> {
+    let abs_path = render_path.canonicalize().ok().or_else(|| {
+        warn!(
+            "auto-detect mode... failed to canonicalize render path `{}`; file may not exist yet",
+            render_path.display()
+        );
+
+        None
+    })?;
+
+    git_info_with(git_cache, &abs_path, "auto-detect mode")
 }
 
 fn build_upstream(
@@ -164,61 +225,15 @@ fn build_upstream(
 
     let (git_info, rel_path) =
         if let Some(repo_path) = upstream_cfg.and_then(|u| u.repo_path.as_ref()) {
-            let git_info = git_cache.get_or_detect(repo_path);
-            if git_info.is_none() {
-                warn!(
-                    "failed to detect git repo at set `repo_path`: `{}`",
-                    repo_path.display()
-                );
-                return None;
-            }
-            let git_info = git_info?;
-
-            let prefix = Path::new(&cfg.dirs.render).join(scheme_name);
-            let rel_path = render_path.strip_prefix(&prefix).ok();
-            if rel_path.is_none() {
-                warn!(
-                    "failed to strip prefix `{}` from render path `{}`",
-                    prefix.display(),
-                    render_path.display()
-                );
-                return None;
-            }
-            let rel_path = rel_path?;
-
-            (git_info, rel_path.to_path_buf())
+            resolve_with_repo_path(
+                git_cache,
+                render_path,
+                scheme_name,
+                repo_path,
+                &cfg.dirs.render,
+            )?
         } else {
-            let abs_path = render_path.canonicalize().ok();
-            if abs_path.is_none() {
-                warn!(
-                    "failed to canonicalize render path `{}`; file may not exist yet",
-                    render_path.display()
-                );
-            }
-            let abs_path = abs_path?;
-
-            let git_info = git_cache.get_or_detect(&abs_path);
-            if git_info.is_none() {
-                warn!(
-                    "failed to detect git repo for render path `{}`",
-                    abs_path.display()
-                );
-                return None;
-            }
-            let git_info = git_info?;
-
-            let rel_path = abs_path.strip_prefix(&git_info.root).ok();
-            if rel_path.is_none() {
-                warn!(
-                    "path `{}` isn't under git root `{}`",
-                    abs_path.display(),
-                    git_info.root.display()
-                );
-                return None;
-            }
-            let rel_path = rel_path?;
-
-            (git_info, rel_path.to_path_buf())
+            resolve_with_autodetect(git_cache, render_path)?
         };
 
     let pattern_override = upstream_cfg.and_then(|u| u.pattern.as_deref());

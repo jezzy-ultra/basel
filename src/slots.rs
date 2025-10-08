@@ -183,7 +183,7 @@ impl SlotName {
     }
 
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -283,4 +283,31 @@ impl SlotValue {
             Ok(Self::Slot(slot_name))
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::{assert_eq, assert_ne};
+
+    use super::*;
+
+    fn create_invalid_slot_names() -> Vec<&'static str> {
+        vec![
+            "selection",
+            "42",
+            "acc ent",
+            "alt_accent",
+            "syntax.keyword_function_alt",
+        ]
+    }
+
+    #[test]
+    fn slots_are_valid() {
+        let slots = iter()
+            .map(|s| SlotName::parse(&s))
+            .collect::<Result<Vec<SlotName>>>()
+            .unwrap_or_else(|e| panic!("invalid `SLOT` name {e}"));
+    }
+
+    fn slot_name_errors_on_invalid_name() {}
 }
