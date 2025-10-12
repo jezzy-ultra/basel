@@ -1,23 +1,20 @@
 {
   "$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
+  "unstable": ["fmt-component", "fmt-sql"],
   "compilerOptions": {
     "checkJs": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
   },
   "fmt": {
-    "jsx.bracePosition": "sameLine",
+    "jsx.bracketPosition": "sameLine",
     "quoteProps": "consistent",
-    "unstable-component": true,
-    "unstable-sql": true,
-    "useBraces": "always"
+    "useBraces": "always",
   },
   "lint": {
     "rules": {
-      "tags": [
-        "recommended"
-      ],
+      "tags": ["recommended"],
       "include": [
         "camelcase",
         "default-param-last",
@@ -43,8 +40,8 @@
         "no-useless-rename",
         "prefer-ascii",
         "single-var-declarator",
-        "triple-slash-reference"
-      ]
-    }
-  }
+        "triple-slash-reference",
+      ],
+    },
+  },
 }
