@@ -19,12 +19,15 @@ categories = [
 
 [workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
+comrak = { version = "0.43", features = ["shortcodes"] }
+deunicode = "1"
 env_logger = "0.11"
 git-url-parse = "0.6"
 git2 = "0.20"
 hex_color = { version = "3", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 indoc = "2"
+json5format = "0.2"
 log = "0.4"
 minijinja = { version = "2", features = [
   "json",
@@ -34,9 +37,11 @@ minijinja = { version = "2", features = [
 ] }
 owo-colors = { version = "4", features = ["supports-colors"] }
 pretty_assertions = "1"
+quick-xml = "0.36"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 shellexpand = "3"
+taplo = "0.14"
 tempfile = "3"
 thiserror = "2"
 toml = { version = "0.9", features = [
@@ -45,6 +50,7 @@ toml = { version = "0.9", features = [
   "preserve_order",
   "serde",
 ] }
+unicode-normalization = "0.1"
 walkdir = "2"
 
 [workspace.lints.clippy]

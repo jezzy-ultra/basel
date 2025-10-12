@@ -1,37 +1,57 @@
 use std::collections::BTreeMap;
-use std::fmt::{Formatter, Result as FmtResult};
 use std::fs;
 use std::io::Error as IoError;
-use std::ops::Deref;
 use std::path::Path;
 use std::result::Result as StdResult;
 use std::sync::Arc;
 
-use hex_color::{Case, Display as HexDisplay, HexColor, ParseHexColorError};
 use indexmap::{IndexMap, IndexSet};
 use minijinja::Value as JinjaValue;
-use minijinja::value::{Enumerator, Object as JinjaObject};
 use serde::de::Error as SerdeDeError;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_json::Error as JsonError;
 use toml::de::Error as TomlDeError;
 use toml::{Table, Value as TomlValue};
 use walkdir::WalkDir;
 
 use crate::slots::{self, Error as SlotError, SlotKind, SlotName, SlotValue};
-use crate::upstream;
+use crate::swatches::{
+    ColorObject, Error as SwatchError, RenderConfig, Swatch, check_ascii_collisions,
+    check_case_collisions,
+};
+use crate::{ColorFormat, Special, TextFormat, is_toml};
+
+const MAX_META_FIELD_LENGTH: usize = 1000;
+
+fn validate_meta_field(name: &str, value: Option<&String>) -> Result<()> {
+    if let Some(text) = value
+        && text.len() > MAX_META_FIELD_LENGTH
+    {
+        return Err(Error::InvalidMeta {
+            field: name.to_owned(),
+            reason: format!(
+                "too long ({} characters; max is {MAX_META_FIELD_LENGTH})",
+                text.len()
+            ),
+        });
+    }
+
+    Ok(())
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("slot resolution error: {0}")]
     Slot(#[from] SlotError),
-    #[error("undefined palette color `{0}`")]
-    UndefinedSwatch(String),
-    #[error("hex parse error: {0}")]
-    ParsingHex(#[from] ParseHexColorError),
-    #[error("invalid TOML syntax in `{path}`: {src}")]
+    #[error("failed to parse palette: {0}")]
+    Swatch(#[from] SwatchError),
+    #[error("slot `{slot}` references non-existent swatch `{swatch}`")]
+    UndefinedSwatch { slot: String, swatch: String },
+    #[error("invalid toml syntax in `{path}`: {src}")]
     ParsingRaw { path: String, src: TomlDeError },
-    #[error("invalid slots structure {path}: {reason}")]
+    #[error("invalid meta field `{field}`: {reason}")]
+    InvalidMeta { field: String, reason: String },
+    #[error("invalid slots structure in `{path}`: {reason}")]
     InvalidSlotsStructure { path: String, reason: String },
     #[error("failed to deserialize `{section}` section in `{path}`: {src}")]
     Deserializing {
@@ -47,163 +67,52 @@ pub enum Error {
     InternalBug(String),
 }
 
-type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Swatch(HexDisplay);
-
-impl Swatch {
-    fn new<T>(input: T) -> Result<Self>
-    where
-        Self: TryFrom<T, Error = Error>,
-    {
-        Self::try_from(input)
-    }
-
-    #[must_use]
-    pub const fn hex(self) -> HexColor {
-        self.0.color()
-    }
-}
-
-impl From<HexColor> for Swatch {
-    fn from(color: HexColor) -> Self {
-        Self(HexDisplay::new(color).with_case(Case::Lower))
-    }
-}
-
-impl From<HexDisplay> for Swatch {
-    fn from(display: HexDisplay) -> Self {
-        Self(display.with_case(Case::Lower))
-    }
-}
-
-impl TryFrom<&str> for Swatch {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self> {
-        let color = HexColor::parse(s)?;
-        Ok(Self(HexDisplay::new(color).with_case(Case::Lower)))
-    }
-}
-
-impl Deref for Swatch {
-    type Target = HexDisplay;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Serialize for Swatch {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl<'de> Deserialize<'de> for Swatch {
-    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Self::new(s.as_str()).map_err(SerdeDeError::custom)
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct ColorObject {
-    hex: String,
-    name: String,
-    rgb: (u8, u8, u8),
-    render_as_name: bool,
-}
-
-impl ColorObject {
-    const fn new(hex: String, name: String, rgb: (u8, u8, u8), render_as_name: bool) -> Self {
-        Self {
-            hex,
-            name,
-            rgb,
-            render_as_name,
-        }
-    }
-}
-
-impl JinjaObject for ColorObject {
-    fn render(self: &Arc<Self>, f: &mut Formatter<'_>) -> FmtResult {
-        write!(
-            f,
-            "{}",
-            if self.render_as_name {
-                &self.name
-            } else {
-                &self.hex
-            }
-        )
-    }
-
-    fn get_value(self: &Arc<Self>, key: &JinjaValue) -> Option<JinjaValue> {
-        let (r, g, b) = self.rgb;
-        match key.as_str()? {
-            "hex" => Some(JinjaValue::from(&self.hex)),
-            "name" => Some(JinjaValue::from(&self.name)),
-            "r" => Some(JinjaValue::from(r)),
-            "g" => Some(JinjaValue::from(g)),
-            "b" => Some(JinjaValue::from(b)),
-            "rf" => Some(JinjaValue::from(f64::from(r) / 255.0)),
-            "gf" => Some(JinjaValue::from(f64::from(g) / 255.0)),
-            "bf" => Some(JinjaValue::from(f64::from(b) / 255.0)),
-            _ => None,
-        }
-    }
-
-    fn enumerate(self: &Arc<Self>) -> Enumerator {
-        Enumerator::Str(&["hex", "name", "r", "g", "b", "rf", "gf", "bf"])
-    }
-}
+pub type Result<T> = StdResult<T, Error>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ResolvedSlot {
-    pub swatch_name: String,
     pub hex: String,
+    pub swatch: String,
+    pub ascii: String,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Meta {
     pub author: Option<String>,
+    pub author_ascii: Option<String>,
     pub license: Option<String>,
+    pub license_ascii: Option<String>,
     pub blurb: Option<String>,
+    pub blurb_ascii: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct Raw {
+struct RawScheme {
     meta: Meta,
-    palette: IndexMap<String, Swatch>,
+    palette: IndexSet<Swatch>,
     slots: IndexMap<SlotName, SlotValue>,
 }
 
-impl Raw {
+impl RawScheme {
     fn parse_slot(
         slot_key: &str,
         val: &TomlValue,
         path: &str,
-        result: &mut IndexMap<SlotName, SlotValue>,
+        parsed: &mut IndexMap<SlotName, SlotValue>,
     ) -> Result<()> {
-        let slot_name = SlotName::parse(slot_key).map_err(|_src| Error::InvalidSlotsStructure {
-            path: path.to_owned(),
-            reason: format!("invalid slot name: `{slot_key}`"),
-        })?;
+        let slot_name = slot_key
+            .parse()
+            .map_err(|_src| Error::InvalidSlotsStructure {
+                path: path.to_owned(),
+                reason: format!("invalid slot name: `{slot_key}`"),
+            })?;
 
         let val_str = val.as_str().ok_or_else(|| Error::InvalidSlotsStructure {
             path: path.to_owned(),
             reason: format!("slot `{slot_key}` must be a string"),
         })?;
 
-        result.insert(slot_name, SlotValue::parse(val_str)?);
+        parsed.insert(slot_name, SlotValue::parse(val_str)?);
         Ok(())
     }
 
@@ -236,55 +145,63 @@ impl Raw {
 
     fn resolve_slot(
         &self,
-        slot: &SlotName,
+        slot: SlotName,
         visited: &mut IndexSet<SlotName>,
     ) -> Result<ResolvedSlot> {
-        if !visited.insert(slot.to_owned()) {
+        if !visited.insert(slot) {
             let mut chain: Vec<String> = visited.iter().map(ToString::to_string).collect();
             chain.push(slot.to_string());
 
             return Err(Error::Slot(SlotError::CircularReference(chain)));
         }
 
-        match self.slots.get(slot) {
-            Some(SlotValue::Swatch(swatch_name)) => self.palette.get(swatch_name).map_or_else(
-                || Err(Error::UndefinedSwatch(swatch_name.to_owned())),
-                |swatch| {
-                    Ok(ResolvedSlot {
-                        swatch_name: swatch_name.to_owned(),
-                        hex: swatch.to_string(),
-                    })
-                },
-            ),
-            Some(SlotValue::Slot(slot_name)) => self.resolve_slot(slot_name, visited),
-            None => match slot.clone().classify() {
+        match self.slots.get(&slot) {
+            Some(SlotValue::Swatch(display_name)) => {
+                self.palette.get(display_name.as_str()).map_or_else(
+                    || {
+                        Err(Error::UndefinedSwatch {
+                            swatch: display_name.to_string(),
+                            slot: slot.to_string(),
+                        })
+                    },
+                    |swatch| {
+                        Ok(ResolvedSlot {
+                            hex: swatch.hex().to_string(),
+                            swatch: swatch.name().to_string(),
+                            ascii: swatch.ascii().to_string(),
+                        })
+                    },
+                )
+            }
+            Some(SlotValue::Slot(slot_name)) => self.resolve_slot(*slot_name, visited),
+            None => match slot.classify() {
                 SlotKind::Base(_) => Err(SlotError::MissingRequired(slot.to_string()).into()),
-                SlotKind::Optional(opt) => self.resolve_slot(&opt.base, visited),
+                SlotKind::Optional(opt) => self.resolve_slot(*opt.base(), visited),
             },
         }
     }
 
-    fn resolve_all(&self) -> Result<IndexMap<SlotName, ResolvedSlot>> {
+    fn resolve_slots(&self) -> Result<IndexMap<SlotName, ResolvedSlot>> {
         let mut resolved_slots = IndexMap::new();
-        let mut missing: Vec<String> = Vec::new();
+        let mut missing_slots: Vec<String> = Vec::new();
 
         for base_slot in slots::base() {
             if !self.slots.contains_key(&base_slot) {
-                missing.push(base_slot.to_string());
+                missing_slots.push(base_slot.to_string());
             }
         }
 
-        if !missing.is_empty() {
+        if !missing_slots.is_empty() {
             return Err(SlotError::MissingRequired(format!(
                 "missing required slots: {}",
-                missing.join(", ")
+                missing_slots.join(", ")
             ))
             .into());
         }
 
         for slot in slots::iter() {
             let mut visited = IndexSet::new();
-            match self.resolve_slot(&slot, &mut visited) {
+            match self.resolve_slot(slot, &mut visited) {
                 Ok(resolved) => {
                     resolved_slots.insert(slot, resolved);
                 }
@@ -295,8 +212,30 @@ impl Raw {
         Ok(resolved_slots)
     }
 
+    fn parse_palette(val: &TomlValue, path: &str) -> Result<IndexSet<Swatch>> {
+        let table = val.as_table().ok_or_else(|| Error::Deserializing {
+            section: "palette".to_owned(),
+            path: path.to_owned(),
+            src: Box::new(<TomlDeError as SerdeDeError>::custom(
+                "palette must be a table",
+            )),
+        })?;
+
+        let mut palette = IndexSet::new();
+
+        for (display_key, v) in table {
+            let swatch = Swatch::parse(display_key, v)?;
+            palette.insert(swatch);
+        }
+
+        check_ascii_collisions(&palette)?;
+        check_case_collisions(&palette)?;
+
+        Ok(palette)
+    }
+
     fn into_scheme(self, name: &str) -> Result<Scheme> {
-        let resolved_slots = self.resolve_all()?;
+        let resolved_slots = self.resolve_slots()?;
 
         Ok(Scheme {
             scheme: name.to_owned(),
@@ -313,7 +252,7 @@ pub struct Scheme {
     #[serde(rename(serialize = "SCHEME"))]
     pub scheme: String,
     pub meta: Meta,
-    pub palette: IndexMap<String, Swatch>,
+    pub palette: IndexSet<Swatch>,
     #[serde(skip)]
     pub slots: IndexMap<SlotName, SlotValue>,
     #[serde(flatten)]
@@ -321,45 +260,102 @@ pub struct Scheme {
 }
 
 impl Scheme {
-    fn insert_static_fields(&self, ctx: &mut BTreeMap<String, JinjaValue>) {
-        ctx.insert(
+    fn ascii_fallback(unicode: Option<&String>, ascii: Option<&String>) -> Option<String> {
+        ascii
+            .cloned()
+            .or_else(|| unicode.map(|s| deunicode::deunicode(s)))
+    }
+
+    fn insert_meta(&self, context: &mut BTreeMap<String, JinjaValue>, config: &Arc<RenderConfig>) {
+        context.insert(
             "SCHEME".to_owned(),
             JinjaValue::from_serialize(&self.scheme),
         );
-        ctx.insert("meta".to_owned(), JinjaValue::from_serialize(&self.meta));
 
+        let author_ascii =
+            Self::ascii_fallback(self.meta.author.as_ref(), self.meta.author_ascii.as_ref());
+        let license_ascii =
+            Self::ascii_fallback(self.meta.license.as_ref(), self.meta.license_ascii.as_ref());
+        let blurb_ascii =
+            Self::ascii_fallback(self.meta.blurb.as_ref(), self.meta.blurb_ascii.as_ref());
+
+        let meta_ctx = if config.text_format == TextFormat::Ascii {
+            Meta {
+                author: author_ascii.clone(),
+                author_ascii,
+                license: license_ascii.clone(),
+                license_ascii,
+                blurb: blurb_ascii.clone(),
+                blurb_ascii,
+            }
+        } else {
+            self.meta.clone()
+        };
+
+        context.insert("meta".to_owned(), JinjaValue::from_serialize(&meta_ctx));
+    }
+
+    fn map_swatches_to_slots(&self) -> IndexMap<String, Vec<String>> {
+        let mut map: IndexMap<String, Vec<String>> = IndexMap::new();
+
+        for swatch in &self.palette {
+            map.insert(swatch.name().to_string(), Vec::new());
+        }
+
+        for (slot_name, resolved_slot) in &self.resolved_slots {
+            if let Some(slots) = map.get_mut(&resolved_slot.swatch) {
+                slots.push(slot_name.to_string());
+            }
+        }
+
+        map
+    }
+
+    fn insert_palette(
+        &self,
+        context: &mut BTreeMap<String, JinjaValue>,
+        swatch_slots: &IndexMap<String, Vec<String>>,
+        config: &Arc<RenderConfig>,
+    ) {
         let palette: Vec<JinjaValue> = self
             .palette
             .iter()
-            .map(|(name, swatch)| {
-                JinjaValue::from_serialize(ColorObject {
-                    hex: swatch.to_string(),
-                    name: name.clone(),
-                    rgb: swatch.hex().split_rgb(),
-                    render_as_name: false,
-                })
+            .map(|swatch| {
+                let name = swatch.name().to_string();
+
+                let slots = swatch_slots.get(&name).cloned().unwrap_or_default();
+
+                JinjaValue::from_serialize(ColorObject::swatch(
+                    swatch.hex().to_string(),
+                    name,
+                    swatch.ascii().to_string(),
+                    swatch.hex().color().split_rgb(),
+                    slots,
+                    Arc::clone(config),
+                ))
             })
             .collect();
-        ctx.insert("palette".to_owned(), JinjaValue::from(palette));
+
+        context.insert("palette".to_owned(), JinjaValue::from(palette));
     }
 
     fn rgb(&self, slot_name: &SlotName, resolved_slot: &ResolvedSlot) -> Result<(u8, u8, u8)> {
         self.palette
-            .get(&resolved_slot.swatch_name)
+            .get(resolved_slot.swatch.as_str())
             .ok_or_else(|| {
                 Error::InternalBug(format!(
                     "resolved slot `{slot_name}` references missing swatch `${}`",
-                    &resolved_slot.swatch_name
+                    &resolved_slot.swatch
                 ))
             })
-            .map(|swatch| swatch.hex().split_rgb())
+            .map(|swatch| swatch.hex().color().split_rgb())
     }
 
     fn insert_grouped_slot(
+        slot_obj: ColorObject,
         groups: &mut BTreeMap<String, BTreeMap<String, JinjaValue>>,
         group: &str,
         key: &str,
-        slot_obj: ColorObject,
     ) {
         groups
             .entry(group.to_owned())
@@ -369,28 +365,30 @@ impl Scheme {
 
     fn insert_slot(
         &self,
-        ctx: &mut BTreeMap<String, JinjaValue>,
+        context: &mut BTreeMap<String, JinjaValue>,
         groups: &mut BTreeMap<String, BTreeMap<String, JinjaValue>>,
         slot_name: &SlotName,
         resolved_slot: &ResolvedSlot,
-        render_swatch_names: bool,
+        config: &Arc<RenderConfig>,
     ) -> Result<()> {
-        let parts: Vec<&str> = slot_name.split('.').collect();
+        let parts: Vec<&str> = slot_name.as_str().split('.').collect();
+
         let rgb = self.rgb(slot_name, resolved_slot)?;
 
-        let obj = ColorObject::new(
+        let obj = ColorObject::slot(
             resolved_slot.hex.clone(),
-            resolved_slot.swatch_name.clone(),
+            resolved_slot.swatch.clone(),
+            resolved_slot.ascii.clone(),
             rgb,
-            render_swatch_names,
+            Arc::clone(config),
         );
 
         match parts.as_slice() {
             [key] => {
-                ctx.insert((*key).to_owned(), JinjaValue::from_object(obj));
+                context.insert((*key).to_owned(), JinjaValue::from_object(obj));
             }
             [group, key] => {
-                Self::insert_grouped_slot(groups, group, key, obj);
+                Self::insert_grouped_slot(obj, groups, group, key);
             }
             _ => {
                 return Err(Error::InternalBug(format!(
@@ -404,9 +402,10 @@ impl Scheme {
 
     fn insert_current_swatch(
         &self,
-        ctx: &mut BTreeMap<String, JinjaValue>,
+        context: &mut BTreeMap<String, JinjaValue>,
         swatch_name: &str,
-        render_swatch_names: bool,
+        swatch_slots: &IndexMap<String, Vec<String>>,
+        config: &Arc<RenderConfig>,
     ) -> Result<()> {
         let swatch = self.palette.get(swatch_name).ok_or_else(|| {
             Error::InternalBug(format!(
@@ -415,57 +414,63 @@ impl Scheme {
             ))
         })?;
 
-        let rgb = swatch.hex().split_rgb();
-        let obj = ColorObject::new(
-            swatch.to_string(),
-            swatch_name.to_owned(),
-            rgb,
-            render_swatch_names,
+        let slots = swatch_slots.get(swatch_name).cloned().unwrap_or_default();
+
+        let obj = ColorObject::swatch(
+            swatch.hex().to_string(),
+            swatch.name().to_string(),
+            swatch.ascii().to_string(),
+            swatch.hex().color().split_rgb(),
+            slots,
+            Arc::clone(config),
         );
 
-        ctx.insert("SWATCH".to_owned(), JinjaValue::from_object(obj));
+        context.insert("SWATCH".to_owned(), JinjaValue::from_object(obj));
 
         Ok(())
     }
 
-    fn insert_set_test_slots(&self, ctx: &mut BTreeMap<String, JinjaValue>) {
+    fn insert_set_test_slots(&self, context: &mut BTreeMap<String, JinjaValue>) {
         let set_slots: Vec<String> = self.slots.keys().map(ToString::to_string).collect();
-        ctx.insert("_set".to_owned(), JinjaValue::from(set_slots));
+        context.insert("_set".to_owned(), JinjaValue::from(set_slots));
     }
 
-    fn insert_special_fields(ctx: &mut BTreeMap<String, JinjaValue>, upstream_url: Option<&str>) {
-        let mut special = BTreeMap::new();
+    fn insert_special(context: &mut BTreeMap<String, JinjaValue>, special: &Special) {
+        let mut special_map = BTreeMap::new();
 
-        if let Some(url) = upstream_url {
-            special.insert("upstream_file".to_owned(), JinjaValue::from(url));
+        special_map.insert(
+            "upstream_file".to_owned(),
+            JinjaValue::from(special.upstream_file.as_deref().unwrap_or("")),
+        );
 
-            if let Some(base) = upstream::extract_base_url(url) {
-                special.insert("upstream_repo".to_owned(), JinjaValue::from(base));
-            }
-        }
+        special_map.insert(
+            "upstream_repo".to_owned(),
+            JinjaValue::from(special.upstream_repo.as_deref().unwrap_or("")),
+        );
 
-        ctx.insert("special".to_owned(), JinjaValue::from(special));
+        context.insert("special".to_owned(), JinjaValue::from(special_map));
     }
 
     pub fn to_context(
         &self,
-        render_swatch_names: bool,
+        color_format: ColorFormat,
+        text_format: TextFormat,
+        special: &Special,
         current_swatch: Option<&str>,
-        upstream_url: Option<&str>,
     ) -> Result<BTreeMap<String, JinjaValue>> {
         let mut ctx = BTreeMap::new();
+
         let mut groups: BTreeMap<String, BTreeMap<String, JinjaValue>> = BTreeMap::new();
 
-        self.insert_static_fields(&mut ctx);
+        let config = RenderConfig::new(color_format, text_format);
+
+        let swatch_slots = Self::map_swatches_to_slots(self);
+
+        self.insert_meta(&mut ctx, &config);
+        self.insert_palette(&mut ctx, &swatch_slots, &config);
 
         for (slot_name, resolved_slot) in &self.resolved_slots {
-            self.insert_slot(
-                &mut ctx,
-                &mut groups,
-                slot_name,
-                resolved_slot,
-                render_swatch_names,
-            )?;
+            self.insert_slot(&mut ctx, &mut groups, slot_name, resolved_slot, &config)?;
         }
 
         for (group_name, group_map) in groups {
@@ -473,10 +478,10 @@ impl Scheme {
         }
 
         if let Some(name) = current_swatch {
-            self.insert_current_swatch(&mut ctx, name, render_swatch_names)?;
+            self.insert_current_swatch(&mut ctx, name, &swatch_slots, &config)?;
         }
 
-        Self::insert_special_fields(&mut ctx, upstream_url);
+        Self::insert_special(&mut ctx, special);
         self.insert_set_test_slots(&mut ctx);
 
         Ok(ctx)
@@ -485,14 +490,17 @@ impl Scheme {
 
 pub fn load(name: &str, path: &Path) -> Result<Scheme> {
     let path = path.to_string_lossy().to_string();
+
     let content = fs::read_to_string(&path).map_err(|src| Error::ReadingFile {
         path: path.clone(),
         src,
     })?;
+
     let root: Table = toml::from_str(&content).map_err(|src| Error::ParsingRaw {
         path: path.clone(),
         src,
     })?;
+
     let meta: Meta = root
         .get("meta")
         .map(|v| {
@@ -504,32 +512,31 @@ pub fn load(name: &str, path: &Path) -> Result<Scheme> {
         })
         .transpose()?
         .unwrap_or_default();
-    let palette: IndexMap<String, Swatch> = root
-        .get("palette")
-        .ok_or_else(|| Error::Deserializing {
-            section: "palette".to_owned(),
-            path: path.clone(),
-            src: Box::new(<TomlDeError as SerdeDeError>::missing_field("palette")),
-        })?
-        .clone()
-        .try_into()
-        .map_err(|src| Error::Deserializing {
-            section: "palette".to_owned(),
-            path: path.clone(),
-            src: Box::new(src),
-        })?;
-    for swatch_name in palette.keys() {
-        if swatch_name.is_empty() {
-            return Err(Error::InternalBug(format!("empty swatch name in `{path}`")));
-        }
-    }
-    let slots_value = root.get("slots").ok_or_else(|| Error::Deserializing {
+
+    validate_meta_field("author", meta.author.as_ref())?;
+    validate_meta_field("author_ascii", meta.author_ascii.as_ref())?;
+    validate_meta_field("license", meta.license.as_ref())?;
+    validate_meta_field("license_ascii", meta.license_ascii.as_ref())?;
+    validate_meta_field("blurb", meta.blurb.as_ref())?;
+    validate_meta_field("blurb_ascii", meta.blurb_ascii.as_ref())?;
+
+    let palette_val = root.get("palette").ok_or_else(|| Error::Deserializing {
+        section: "palette".to_owned(),
+        path: path.clone(),
+        src: Box::new(<TomlDeError as SerdeDeError>::missing_field("palette")),
+    })?;
+
+    let palette = RawScheme::parse_palette(palette_val, &path)?;
+
+    let slots_val = root.get("slots").ok_or_else(|| Error::Deserializing {
         section: "slots".to_owned(),
         path: path.clone(),
         src: Box::new(<TomlDeError as SerdeDeError>::missing_field("slots")),
     })?;
-    let slots = Raw::parse_slots(slots_value, &path)?;
-    let raw = Raw {
+
+    let slots = RawScheme::parse_slots(slots_val, &path)?;
+
+    let raw = RawScheme {
         meta,
         palette,
         slots,
@@ -543,7 +550,7 @@ pub fn load_all(dir: &str) -> Result<IndexMap<String, Scheme>> {
 
     for entry in WalkDir::new(dir).into_iter().filter_map(StdResult::ok) {
         let path = entry.path();
-        if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("toml") {
+        if path.is_file() && is_toml(path) {
             let name = path
                 .file_stem()
                 .and_then(|stem| stem.to_str())
@@ -553,8 +560,8 @@ pub fn load_all(dir: &str) -> Result<IndexMap<String, Scheme>> {
                         path.display(),
                     ))
                 })?;
-            let s = load(name, path)?;
-            schemes.insert(name.to_owned(), s);
+            let scheme = load(name, path)?;
+            schemes.insert(name.to_owned(), scheme);
         }
     }
 

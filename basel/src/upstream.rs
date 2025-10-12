@@ -6,27 +6,48 @@ use git2::Repository;
 use indexmap::IndexMap;
 use log::warn;
 
+#[expect(
+    unnameable_types,
+    reason = "internal error intentionally exposed through public `crate::Error`"
+)]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("failed to parse git URL `{url}`: {src}")]
+    #[error("failed to parse git url `{url}`: {src}")]
     ParsingUrl { url: String, src: GitUrlParseError },
-    #[error("couldn't get the host in git URL `{0}`")]
+    #[error("failed to get the host in git url `{0}`")]
     UnsupportedUrl(String),
-    #[error("{0}")]
-    InternalBug(String),
 }
 
-pub type Result<T> = StdResult<T, Error>;
+pub(crate) type Result<T> = StdResult<T, Error>;
 
 #[derive(Debug, Clone)]
-pub struct GitInfo {
-    pub root: PathBuf,
-    pub remote_url: String,
-    pub remote_host: String,
-    pub default_branch: String,
+pub(crate) struct GitInfo {
+    root: PathBuf,
+    remote_url: String,
+    remote_host: String,
+    default_branch: String,
 }
 
 impl GitInfo {
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    #[expect(unused, reason = "getter for api")]
+    pub(crate) fn remote_url(&self) -> &str {
+        &self.remote_url
+    }
+
+    #[expect(unused, reason = "getter for api")]
+    pub(crate) fn remote_host(&self) -> &str {
+        &self.remote_host
+    }
+
+    #[expect(unused, reason = "getter for api")]
+    pub(crate) fn default_branch(&self) -> &str {
+        &self.default_branch
+    }
+
     fn normalize(url: &str) -> Result<(String, String)> {
         let parsed = GitUrl::parse(url).map_err(|src| Error::ParsingUrl {
             url: url.to_owned(),
@@ -60,7 +81,7 @@ impl GitInfo {
         match Self::normalize(raw_url) {
             Ok((url, host)) => Some((url, host)),
             Err(e) => {
-                warn!("failed to normalize git URL `{raw_url}`: {e}");
+                warn!("failed to normalize git url `{raw_url}`: {e}");
                 None
             }
         }
@@ -114,7 +135,7 @@ fn infer_url_pattern(remote: &str) -> &'static str {
 }
 
 #[must_use]
-pub fn build_url(
+pub(crate) fn build_url(
     git_info: &GitInfo,
     rel_path: &Path,
     pattern_override: Option<&str>,
@@ -138,7 +159,7 @@ pub fn build_url(
 }
 
 #[must_use]
-pub fn extract_base_url(full_url: &str) -> Option<String> {
+pub(crate) fn extract_base_url(full_url: &str) -> Option<String> {
     let separators = ["/blob/", "/-/blob/", "/src/", "/src/branch/"];
     for separator in &separators {
         if let Some(pos) = full_url.find(separator) {
@@ -150,15 +171,15 @@ pub fn extract_base_url(full_url: &str) -> Option<String> {
 }
 
 #[derive(Debug, Default)]
-pub struct GitCache(IndexMap<PathBuf, Option<GitInfo>>);
+pub(crate) struct GitCache(IndexMap<PathBuf, Option<GitInfo>>);
 
 impl GitCache {
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self(IndexMap::new())
     }
 
-    pub fn get_or_detect(&mut self, render_path: &Path) -> Option<GitInfo> {
+    pub(crate) fn get_or_detect(&mut self, render_path: &Path) -> Option<GitInfo> {
         let Ok(repo) = Repository::discover(render_path) else {
             warn!(
                 "failed to discover git repo from path `{}`",

@@ -1,7 +1,10 @@
 [meta]
 author = "jezzy jumble (@jezzy-ultra)"
+# author_ascii
 license = "MPL-2.0"
-blurb = "cute af theme for queers <3"
+# license_ascii
+blurb = "cute af theme for queers ♡"
+blurb_ascii = "cute af theme for queers <3"
 
 [palette]
 cherry_blossom = "#eaa5a7"
@@ -16,7 +19,7 @@ sour_apple = "#bec975"
 lemon = "#ffef43"
 honeycomb = "#f0e9ae"
 nectar = "#f1d090"
-creamsicle = "#f1c972"
+creamsicle = "#f1c272"
 peach = "#e6c1a4"
 sand = "#f9a057"
 coral = "#f7675c"
@@ -64,7 +67,7 @@ guide_whitespace = "$soil"
 match = "$lemon"
 error = "$coral"
 warning = "$nectar"
-info = "$peacock"
+info = "$lilac"
 hint = "fg"
 
 [slots.debug]
@@ -129,7 +132,6 @@ special = "$princess"
 special_character = "syntax.special_string"
 special_string = "$blueberry"
 special_punctuation = "$strawberry"
-# rainbow = [[[[[[]]]]]]
 
 [slots.diff]
 plus = "$sour_apple"

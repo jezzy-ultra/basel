@@ -25,10 +25,10 @@ fn main() -> Result<()> {
         ..Default::default()
     };
 
-    let templates = Loader::new(&cfg.dirs.templates, &cfg.ignored_directives)?;
+    let templates = Loader::new(&cfg)?;
     let schemes = schemes::load_all(&cfg.dirs.schemes)?;
 
-    render::all(&cfg, &templates, &schemes)?;
+    render::render(&templates, &schemes, &cfg)?;
 
     Ok(())
 }

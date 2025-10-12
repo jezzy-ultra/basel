@@ -1,39 +1,13 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::ops::Deref;
+use std::result::Result as StdResult;
+use std::str::FromStr;
 
 use owo_colors::OwoColorize as _;
 use owo_colors::Stream::Stdout;
 use serde::Serialize;
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("undefined slot `{0}`")]
-    UndefinedSlot(String),
-    #[error("circular slot references: {}", format_circular_chain(.0))]
-    CircularReference(Vec<String>),
-    #[error("required slot `{0}` missing")]
-    MissingRequired(String),
-}
-
-fn format_circular_chain(slots: &[String]) -> String {
-    slots
-        .iter()
-        .enumerate()
-        .map(|(i, slot)| {
-            if i == slots.len() - 1 {
-                format!(
-                    "`{}`",
-                    slot.if_supports_color(Stdout, |text| text.red().underline().to_string())
-                )
-            } else {
-                format!("`{slot}`")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" -> ")
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
+use crate::SLOT_VARIANT_SEPARATOR;
+use crate::swatches::SwatchDisplayName;
 
 const SLOTS: &[&str] = &[
     "bg",
@@ -160,39 +134,80 @@ const SLOTS: &[&str] = &[
     "ansi.white_bright",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-pub struct SlotName(pub String);
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("undefined slot `{0}`")]
+    UndefinedSlot(String),
+    #[error("circular slot references: {}", format_circular_chain(.0))]
+    CircularReference(Vec<String>),
+    #[error("required slot `{0}` missing")]
+    MissingRequired(String),
+}
+
+fn format_circular_chain(slots: &[String]) -> String {
+    slots
+        .iter()
+        .enumerate()
+        .map(|(i, slot)| {
+            if i == slots.len() - 1 {
+                format!(
+                    "`{}`",
+                    slot.if_supports_color(Stdout, |text| text.red().underline().to_string())
+                )
+            } else {
+                format!("`{slot}`")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" -> ")
+}
+
+pub(crate) type Result<T> = StdResult<T, Error>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub struct SlotName(&'static str);
 
 impl SlotName {
-    pub fn parse(name: &str) -> Result<Self> {
-        if SLOTS.contains(&name) {
-            Ok(Self(name.to_owned()))
+    #[expect(clippy::unreachable, reason = "guaranteed by slot design")]
+    #[must_use]
+    pub fn classify(&self) -> SlotKind {
+        if is_base(self.as_str()) {
+            SlotKind::Base(BaseSlot(*self))
         } else {
-            Err(Error::UndefinedSlot(name.to_owned()))
+            let base_str = extract_base(self.as_str());
+            let base_slot = SLOTS
+                .iter()
+                .find(|&&slot| slot == base_str)
+                .copied()
+                .map_or_else(|| unreachable!("optional slots always have a base"), Self);
+
+            SlotKind::Optional(OptionalSlot {
+                name: *self,
+                base: BaseSlot(base_slot),
+            })
         }
     }
 
-    #[must_use]
-    pub fn classify(self) -> SlotKind {
-        if is_base(&self) {
-            SlotKind::Base(BaseSlot(self))
-        } else {
-            let base = BaseSlot(Self(derive_base(&self).to_owned()));
-            SlotKind::Optional(OptionalSlot { name: self, base })
-        }
+    pub fn parse(s: &str) -> Result<Self> {
+        s.parse()
     }
 
     #[must_use]
-    fn as_str(&self) -> &str {
-        &self.0
+    pub const fn as_str(&self) -> &str {
+        self.0
     }
 }
 
-impl Deref for SlotName {
-    type Target = str;
+impl FromStr for SlotName {
+    type Err = Error;
 
-    fn deref(&self) -> &Self::Target {
-        self.as_str()
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        SLOTS
+            .iter()
+            .find(|&&slot| slot == s)
+            .copied()
+            .map(Self)
+            .ok_or_else(|| Error::UndefinedSlot(s.to_owned()))
     }
 }
 
@@ -202,12 +217,12 @@ impl Display for SlotName {
     }
 }
 
-pub fn iter() -> impl Iterator<Item = SlotName> {
-    SLOTS.iter().map(|&s| SlotName(s.to_owned()))
+pub(crate) fn iter() -> impl Iterator<Item = SlotName> {
+    SLOTS.iter().copied().map(SlotName)
 }
 
-fn derive_base(slot: &str) -> &str {
-    if let Some((base, _)) = slot.rsplit_once('_') {
+fn extract_base(slot: &str) -> &str {
+    if let Some((base, _)) = slot.rsplit_once(SLOT_VARIANT_SEPARATOR) {
         return base;
     }
 
@@ -215,54 +230,42 @@ fn derive_base(slot: &str) -> &str {
 }
 
 fn is_base(slot: &str) -> bool {
-    derive_base(slot) == slot
+    extract_base(slot) == slot
 }
 
-pub fn base() -> impl Iterator<Item = SlotName> {
-    SLOTS
-        .iter()
-        .filter(|&&s| is_base(s))
-        .map(|&s| SlotName(s.to_owned()))
+pub(crate) fn base() -> impl Iterator<Item = SlotName> {
+    SLOTS.iter().copied().filter(|&s| is_base(s)).map(SlotName)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct BaseSlot(SlotName);
 
 impl BaseSlot {
-    const fn name(&self) -> &SlotName {
+    #[must_use]
+    pub const fn name(&self) -> &SlotName {
         &self.0
     }
 }
 
-impl Deref for BaseSlot {
-    type Target = SlotName;
-
-    fn deref(&self) -> &Self::Target {
-        self.name()
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct OptionalSlot {
-    pub name: SlotName,
-    pub base: BaseSlot,
+    name: SlotName,
+    base: BaseSlot,
 }
 
 impl OptionalSlot {
-    const fn name(&self) -> &SlotName {
+    #[must_use]
+    pub const fn name(&self) -> &SlotName {
         &self.name
     }
-}
 
-impl Deref for OptionalSlot {
-    type Target = SlotName;
-
-    fn deref(&self) -> &Self::Target {
-        self.name()
+    #[must_use]
+    pub const fn base(&self) -> &SlotName {
+        self.base.name()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum SlotKind {
     Base(BaseSlot),
     Optional(OptionalSlot),
@@ -270,16 +273,19 @@ pub enum SlotKind {
 
 #[derive(Debug, Serialize)]
 pub enum SlotValue {
-    Swatch(String),
+    Swatch(SwatchDisplayName),
     Slot(SlotName),
 }
 
 impl SlotValue {
     pub fn parse(val: &str) -> Result<Self> {
         if let Some(swatch_name) = val.strip_prefix('$') {
-            Ok(Self::Swatch(swatch_name.to_owned()))
+            let display_name = SwatchDisplayName::parse(swatch_name).map_err(|_err| {
+                Error::UndefinedSlot(format!("invalid swatch reference: `${swatch_name}`"))
+            })?;
+            Ok(Self::Swatch(display_name))
         } else {
-            let slot_name = SlotName::parse(val)?;
+            let slot_name = val.parse()?;
             Ok(Self::Slot(slot_name))
         }
     }
@@ -304,7 +310,7 @@ mod tests {
     #[test]
     fn slots_are_valid() {
         let slots = iter()
-            .map(|s| SlotName::parse(&s))
+            .map(|s| s.as_str().parse())
             .collect::<Result<Vec<SlotName>>>()
             .unwrap_or_else(|e| panic!("invalid `SLOT` name {e}"));
     }
