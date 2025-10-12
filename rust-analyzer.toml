@@ -1,0 +1,23 @@
+[assist]
+emitMustUse = true
+preferSelf = true
+
+[cargo]
+features = "all"
+
+[check]
+command = "clippy"
+
+[diagnostics]
+experimental.enable = true
+styleLints.enable = true
+
+[imports]
+prefix = "self"
+
+[imports.granularity]
+enforce = true
+group = "one"
+
+[rustfmt]
+rangeFormatting.enable = true

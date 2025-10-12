@@ -1,0 +1,55 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.2.5/schema.json",
+  "formatter": {
+    "formatWithErrors": true,
+    "indentStyle": "space",
+  },
+  "javascript": {
+    "formatter": {
+      "quoteProperties": "asNeeded",
+      "trailingCommas": "all",
+      "indentStyle": "space",
+      "operatorLinebreak": "before",
+    },
+  },
+  "json": {
+    "parser": {
+      "allowComments": true,
+      "allowTrailingCommas": true,
+    },
+    "formatter": {
+      "indentStyle": "space",
+      "trailingCommas": "all",
+    },
+  },
+  "css": {
+    "parser": {
+      "cssModules": true,
+    },
+    "formatter": {
+      "enabled": true,
+      "indentStyle": "space",
+    },
+  },
+  "graphql": {
+    "formatter": {
+      "enabled": true,
+      "indentStyle": "space",
+    },
+  },
+  "grit": {
+    "formatter": {
+      "enabled": true,
+      "indentStyle": "space",
+    },
+  },
+  "html": {
+    "parser": {
+      "interpolation": true,
+    },
+    "formatter": {
+      "enabled": true,
+      "indentStyle": "space",
+    },
+  },
+}
