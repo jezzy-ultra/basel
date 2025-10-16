@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["basel", "simple-palettes", "tools/cargo-bin"]
+members = [
+  "basel",
+  "simple-palettes",
+  "tools/cargo-bin",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,7 +13,13 @@ description = "full-fat color scheme engine. write once, theme everything."
 readme = "README.md"
 repository = "https://github.com/jezzy-ultra/basel"
 license = "GPLv3"
-keywords = ["color", "colorscheme", "generator", "palette", "theme"]
+keywords = [
+  "color",
+  "colorscheme",
+  "generator",
+  "palette",
+  "theme",
+]
 categories = [
   "command-line-utilities",
   "config",
@@ -19,41 +29,69 @@ categories = [
 
 [workspace.dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-comrak = { version = "0.44", features = ["shortcodes"] }
 deunicode = "1"
+dioxus = "0.7.0-rc.2"
 env_logger = "0.11"
 git-url-parse = "0.6"
 git2 = "0.20"
-hex_color = { version = "3", features = ["serde"] }
-indexmap = { version = "2", features = ["serde"] }
 indoc = "2"
 json5format = "0.2"
 log = "0.4"
-minijinja = { version = "2", features = [
-  "json",
-  "loader",
-  "preserve_order",
-  "unicode",
-] }
-owo-colors = { version = "4", features = ["supports-colors"] }
 pretty_assertions = "1"
 quick-xml = "0.38"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 shellexpand = "3"
 taplo = "0.14"
 tempfile = "3"
 thiserror = "2"
-toml = { version = "0.9", features = [
+unicode-normalization = "0.1"
+walkdir = "2"
+
+[workspace.dependencies.clap]
+version = "4"
+features = ["derive"]
+
+[workspace.dependencies.comrak]
+version = "0.44"
+features = ["shortcodes"]
+
+[workspace.dependencies.hex_color]
+version = "3"
+features = ["serde"]
+
+[workspace.dependencies.indexmap]
+version = "2"
+features = ["serde"]
+
+[workspace.dependencies.minijinja]
+version = "2"
+features = [
+  "json",
+  "loader",
+  "preserve_order",
+  "unicode",
+]
+
+[workspace.dependencies.owo-colors]
+version = "4"
+features = ["supports-colors"]
+
+[workspace.dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[workspace.dependencies.serde_json]
+version = "1"
+features = ["preserve_order"]
+
+[workspace.dependencies.toml]
+version = "0.9"
+features = [
   "display",
   "parse",
   "preserve_order",
   "serde",
-] }
-unicode-normalization = "0.1"
-walkdir = "2"
+]
 
 [workspace.lints.clippy]
 absolute_paths = "warn"
@@ -64,7 +102,6 @@ as_ptr_cast_mut = "warn"
 as_underscore = "warn"
 assertions_on_result_states = "warn"
 branches_sharing_code = "warn"
-cargo = { level = "warn", priority = -1 }
 cfg_not_test = "warn"
 clear_with_drain = "warn"
 clone_on_ref_ptr = "warn"
@@ -116,7 +153,6 @@ mem_forget = "warn"
 missing_assert_message = "warn"
 missing_asserts_for_indexing = "warn"
 missing_const_for_fn = "warn"
-# missing_docs_in_private_items = "warn"
 mixed_read_write_in_expression = "warn"
 mod_module_files = "warn"
 module_name_repetitions = "warn"
@@ -136,8 +172,6 @@ panic_in_result_fn = "warn"
 partial_pub_fields = "warn"
 path_buf_push_overwrite = "warn"
 pathbuf_init_then_push = "warn"
-# pattern_type_mismatch = "warn"
-pedantic = { level = "warn", priority = -1 }
 precedence_bits = "warn"
 pub_without_shorthand = "warn"
 rc_mutex = "warn"
@@ -190,6 +224,14 @@ useless_let_if_seq = "warn"
 verbose_file_reads = "warn"
 while_float = "warn"
 
+[workspace.lints.clippy.cargo]
+level = "warn"
+priority = -1
+
+[workspace.lints.clippy.pedantic]
+level = "warn"
+priority = -1
+
 [workspace.lints.rust]
 absolute_paths_not_starting_with_crate = "warn"
 ambiguous_negative_literals = "warn"
@@ -226,7 +268,7 @@ trivial_casts = "deny"
 trivial_numeric_casts = "deny"
 unit_bindings = "warn"
 unnameable_types = "warn"
-unqualified_local_imports = "deny"
+# unqualified_local_imports = "deny"
 unreachable_pub = "deny"
 unsafe_attr_outside_unsafe = "warn"
 unsafe_code = "deny"
@@ -243,5 +285,14 @@ missing_crate_level_docs = "warn"
 unescaped_backticks = "warn"
 
 [workspace.metadata.bin]
-cargo-binstall = { version = "^1" }
-dprint = { version = "^0.50" }
+cargo-binstall.version = "^1"
+cargo-edit.bins = [
+  "cargo-upgrade",
+  "cargo-set-version",
+  "cargo-rm",
+  "cargo-add",
+]
+cargo-edit.version = "^0.13"
+dioxus-cli.bins = ["dx"]
+dioxus-cli.version = "0.7.0-rc.2"
+dprint.version = "^0.50"

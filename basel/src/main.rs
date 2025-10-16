@@ -1,6 +1,5 @@
 #![allow(missing_docs, reason = "TODO: add docs")]
 #![allow(clippy::missing_docs_in_private_items, reason = "TODO: add docs")]
-#![feature(unqualified_local_imports)]
 #![feature(supertrait_item_shadowing)]
 #![feature(non_exhaustive_omitted_patterns_lint)]
 #![feature(must_not_suspend)]

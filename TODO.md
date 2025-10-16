@@ -21,12 +21,6 @@
 - [ ] if an undefined role is used as a value in a scheme, ask the user if they
       meant to prefix it with a `$` in the error message
 
-# cutiepro
-
-- [ ] make `creamsicle` slightly yellower (or `sand` slightly redder?)
-- [ ] add four additional colors to the rainbow brackets for a total of 10
-      levels
-
 # schemes
 
 - [ ] move `scheme` (and the upstream stuff) under `meta`
@@ -52,3 +46,13 @@
       table technically optional?
 - [ ] rethink role design around headings and rainbow punctuation
   - [ ] make `rainbow` an optional array under a new `features` table
+
+# personal
+
+- [ ] show current directory and running command in fish title
+
+## cutiepro
+
+- [ ] make `creamsicle` slightly yellower (or `sand` slightly redder?)
+- [ ] add four additional colors to the rainbow brackets for a total of 10
+      levels

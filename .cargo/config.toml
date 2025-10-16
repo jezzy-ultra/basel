@@ -1,3 +1,7 @@
 [alias]
 bin = ["run", "--package", "cargo-bin", "--"]
+add = ["bin", "cargo-add"]
 binstall = ["bin", "cargo-binstall"]
+rm = ["bin", "cargo-rm"]
+set-version = ["bin", "cargo-set-version"]
+upgrade = ["bin", "cargo-upgrade"]

@@ -1,7 +1,6 @@
 #![feature(more_qualified_paths)]
 #![feature(stmt_expr_attributes)]
 #![feature(str_as_str)]
-#![feature(unqualified_local_imports)]
 #![feature(supertrait_item_shadowing)]
 #![feature(non_exhaustive_omitted_patterns_lint)]
 #![feature(must_not_suspend)]
