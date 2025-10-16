@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["basel", "simple-palettes"]
+members = ["basel", "simple-palettes", "tools/cargo-bin"]
 
 [workspace.package]
 version = "0.1.0"
@@ -18,8 +18,9 @@ categories = [
 ]
 
 [workspace.dependencies]
+anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-comrak = { version = "0.43", features = ["shortcodes"] }
+comrak = { version = "0.44", features = ["shortcodes"] }
 deunicode = "1"
 env_logger = "0.11"
 git-url-parse = "0.6"
@@ -37,9 +38,10 @@ minijinja = { version = "2", features = [
 ] }
 owo-colors = { version = "4", features = ["supports-colors"] }
 pretty_assertions = "1"
-quick-xml = "0.36"
+quick-xml = "0.38"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
 shellexpand = "3"
 taplo = "0.14"
 tempfile = "3"
@@ -57,7 +59,6 @@ walkdir = "2"
 absolute_paths = "warn"
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
-# arbitrary_source_item_ordering = "warn"
 as_pointer_underscore = "warn"
 as_ptr_cast_mut = "warn"
 as_underscore = "warn"
@@ -81,6 +82,8 @@ empty_drop = "warn"
 empty_enum_variants_with_brackets = "warn"
 empty_structs_with_brackets = "warn"
 equatable_if_let = "warn"
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
 exit = "warn"
 expect_used = "warn"
 fallible_impl_from = "warn"
@@ -113,7 +116,7 @@ mem_forget = "warn"
 missing_assert_message = "warn"
 missing_asserts_for_indexing = "warn"
 missing_const_for_fn = "warn"
-missing_docs_in_private_items = "warn"
+# missing_docs_in_private_items = "warn"
 mixed_read_write_in_expression = "warn"
 mod_module_files = "warn"
 module_name_repetitions = "warn"
@@ -209,7 +212,7 @@ missing_docs = "warn"
 missing_unsafe_on_extern = "deny"
 multiple_supertrait_upcastable = "warn"
 must_not_suspend = "warn"
-# non_exhaustive_omitted_patterns = "warn"
+non_exhaustive_omitted_patterns = "warn"
 redundant_imports = "deny"
 redundant_lifetimes = "deny"
 rust_2024_guarded_string_incompatible_syntax = "deny"
@@ -238,3 +241,7 @@ variant_size_differences = "warn"
 [workspace.lints.rustdoc]
 missing_crate_level_docs = "warn"
 unescaped_backticks = "warn"
+
+[workspace.metadata.bin]
+cargo-binstall = { version = "^1" }
+dprint = { version = "^0.50" }

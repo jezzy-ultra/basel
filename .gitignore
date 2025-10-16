@@ -1,5 +1,7 @@
-**/target
-**/render
+**/target/
+**/render/
+**/.basel/
 
+**/.bin/
 **/.direnv/
 **/.idea/

@@ -92,6 +92,7 @@ fn markdown_format_options<'a>() -> ComrakOptions<'a> {
             superscript: true,
             header_ids: None,
             footnotes: true,
+            inline_footnotes: true,
             description_lists: true,
             front_matter_delimiter: None,
             multiline_block_quotes: true,
