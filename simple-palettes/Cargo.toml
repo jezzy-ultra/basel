@@ -9,5 +9,14 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[dependencies]
+dioxus.workspace = true
+
+[features]
+default = ["web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
+web = ["dioxus/web"]
+
 [lints]
 workspace = true
