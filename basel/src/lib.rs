@@ -15,8 +15,8 @@ use std::io;
 use std::path::Path;
 use std::result::Result as StdResult;
 
+use anyhow::Error as AnyhowError;
 use serde::Serialize;
-
 pub mod cli;
 pub mod config;
 pub mod directives;
@@ -40,15 +40,6 @@ pub use crate::schemes::{
 pub use crate::swatches::{Error as SwatchError, Swatch, SwatchAsciiName, SwatchColor, SwatchName};
 pub use crate::upstream::Error as UpstreamError;
 
-pub const SCHEME_MARKER: &str = "SCHEME";
-pub const SCHEME_VARIABLE: &str = "scheme";
-pub const SWATCH_MARKER: &str = "SWATCH";
-pub const SWATCH_VARIABLE: &str = "swatch";
-pub const ROLE_VARIANT_SEPARATOR: char = '_';
-pub const SET_TEST_OBJECT: &str = "_set";
-pub const JINJA_TEMPLATE_SUFFIX: &str = ".jinja";
-pub const SKIP_RENDERING_PREFIX: char = '_';
-
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -65,13 +56,13 @@ pub enum Error {
     #[error("scheme error: {0}")]
     Scheme(#[from] SchemeError),
     #[error("error processing template: {0}")]
-    Template(String),
+    Template(#[source] AnyhowError),
     #[error("manifest error: {0}")]
     Manifest(#[from] ManifestError),
     #[error("error rendering: {0}")]
-    Rendering(String),
+    Rendering(#[source] AnyhowError),
     #[error("error formatting: {0}")]
-    Formatting(String),
+    Formatting(#[source] AnyhowError),
     #[error("file system error: {0}")]
     Io(#[from] io::Error),
     #[error("internal error in {module}: {reason}! this is a bug!")]
@@ -83,15 +74,15 @@ pub enum Error {
 
 impl Error {
     pub(crate) fn rendering(err: impl Into<anyhow::Error>) -> Self {
-        Self::Rendering(err.into().to_string())
+        Self::Rendering(err.into())
     }
 
     pub(crate) fn template(err: impl Into<anyhow::Error>) -> Self {
-        Self::Template(err.into().to_string())
+        Self::Template(err.into())
     }
 
     pub(crate) fn formatting(err: impl Into<anyhow::Error>) -> Self {
-        Self::Formatting(err.into().to_string())
+        Self::Formatting(err.into())
     }
 }
 
@@ -105,7 +96,7 @@ pub enum ColorFormat {
     Name,
 }
 
-#[non_exhaustive]
+#[expect(clippy::exhaustive_enums, reason = "unlikely to need more")]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum TextFormat {
     #[default]

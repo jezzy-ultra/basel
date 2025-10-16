@@ -15,6 +15,9 @@ use toml::Value as TomlValue;
 
 use crate::{ColorFormat, Result, TextFormat, name_type};
 
+pub(crate) const SWATCH_MARKER: &str = "SWATCH";
+pub(crate) const SWATCH_VARIABLE: &str = "swatch";
+
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

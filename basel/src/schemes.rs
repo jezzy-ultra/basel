@@ -20,6 +20,8 @@ use crate::swatches::{
 };
 use crate::{ColorFormat, Result, Special, TextFormat, is_toml, name_type};
 
+pub(crate) const SCHEME_MARKER: &str = "SCHEME";
+
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

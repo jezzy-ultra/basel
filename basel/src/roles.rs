@@ -6,9 +6,11 @@ use owo_colors::OwoColorize as _;
 use owo_colors::Stream::Stdout;
 use serde::Serialize;
 
-use crate::ROLE_VARIANT_SEPARATOR;
 use crate::swatches::SwatchName;
 
+pub(crate) const ROLE_VARIANT_SEPARATOR: char = '_';
+
+// TODO: consider using a macro to generate roles as enums?
 const ROLES: &[&str] = &[
     "bg",
     "bg_alt",

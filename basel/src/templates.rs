@@ -13,6 +13,10 @@ use crate::config::Config;
 use crate::directives::Directives;
 use crate::{Error, Result, has_extension};
 
+pub(crate) const SET_TEST_OBJECT: &str = "_set";
+pub(crate) const JINJA_TEMPLATE_SUFFIX: &str = ".jinja";
+pub(crate) const SKIP_RENDERING_PREFIX: char = '_';
+
 #[derive(Debug)]
 pub struct Loader {
     env: Environment<'static>,

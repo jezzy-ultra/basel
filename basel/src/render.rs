@@ -10,13 +10,11 @@ use crate::config::Config;
 use crate::directives::Directives;
 use crate::format::format;
 use crate::manifest::{FileStatus, Manifest};
-use crate::schemes::Scheme;
-use crate::templates::Loader;
+use crate::schemes::{SCHEME_MARKER, Scheme};
+use crate::swatches::{SWATCH_MARKER, SWATCH_VARIABLE};
+use crate::templates::{JINJA_TEMPLATE_SUFFIX, Loader, SET_TEST_OBJECT, SKIP_RENDERING_PREFIX};
 use crate::upstream::{GitCache, GitInfo};
-use crate::{
-    Error, JINJA_TEMPLATE_SUFFIX, Result, SCHEME_MARKER, SET_TEST_OBJECT, SKIP_RENDERING_PREFIX,
-    SWATCH_MARKER, SWATCH_VARIABLE, Special, upstream,
-};
+use crate::{Error, Result, Special, upstream};
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

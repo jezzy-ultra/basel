@@ -42,7 +42,7 @@ pub enum Error {
 
 type Result<T> = StdResult<T, Error>;
 
-#[non_exhaustive]
+#[expect(clippy::exhaustive_enums, reason = "represents a binary")]
 #[derive(Debug)]
 pub enum FileStatus {
     NotTracked,
