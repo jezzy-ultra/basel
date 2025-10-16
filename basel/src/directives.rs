@@ -1,28 +1,12 @@
 use std::collections::HashSet;
 use std::path::Path;
-use std::result::Result as StdResult;
 
+use anyhow::{Result as AnyhowResult, bail};
 use indexmap::IndexMap;
 use log::{debug, error};
 
 use self::DirectiveType::{Basel, Other};
-use crate::{ColorFormat, TextFormat, is_toml};
-
-#[expect(
-    unnameable_types,
-    reason = "internal error intentionally exposed through public `crate::Error`"
-)]
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("invalid directive `{directive}` in `{path}`: {reason}")]
-    ParsingDirective {
-        directive: String,
-        path: String,
-        reason: String,
-    },
-}
-
-pub(crate) type Result<T> = StdResult<T, Error>;
+use crate::{ColorFormat, Error, Result, TextFormat, is_toml};
 
 #[derive(Debug, Clone, PartialEq)]
 enum LineType {
@@ -36,21 +20,14 @@ enum DirectiveType {
     Other(String),
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Config {
-    color_format: ColorFormat,
-    text_format: TextFormat,
+pub struct Config {
+    pub color_format: ColorFormat,
+    pub text_format: TextFormat,
 }
 
 impl Config {
-    pub(crate) const fn color_format(&self) -> ColorFormat {
-        self.color_format
-    }
-
-    pub(crate) const fn text_format(&self) -> TextFormat {
-        self.text_format
-    }
-
     fn parse_bool(directive: &str, val: &str, template_name: &str) -> bool {
         match val {
             "true" => true,
@@ -98,19 +75,16 @@ impl Config {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug)]
-pub(crate) struct Directives {
-    config: Config,
-    output_lines: HashSet<String>,
+pub struct Directives {
+    pub config: Config,
+    pub output_lines: HashSet<String>,
 }
 
 type Type = str;
 
 impl Directives {
-    pub(crate) const fn config(&self) -> &Config {
-        &self.config
-    }
-
     fn matches_pattern(line: &str, patterns: &[Vec<String>]) -> bool {
         patterns
             .iter()
@@ -121,7 +95,7 @@ impl Directives {
         line: &str,
         strip_patterns: &[Vec<String>],
         file_path: &str,
-    ) -> Result<LineType> {
+    ) -> AnyhowResult<LineType> {
         let trimmed = line.trim();
 
         if trimmed.is_empty() || trimmed.starts_with("##") || !trimmed.starts_with('#') {
@@ -136,11 +110,8 @@ impl Directives {
                 }));
             }
 
-            return Err(Error::ParsingDirective {
-                directive: part.to_owned(),
-                path: file_path.to_owned(),
-                reason: "incomplete basel directive".to_owned(),
-            });
+            // TODO: add more help
+            bail!("incomplete basel directive in `{file_path}`: `{part}`")
         }
 
         if Self::matches_pattern(trimmed, strip_patterns) {
@@ -167,12 +138,12 @@ impl Directives {
         content[start..end].join("\n")
     }
 
-    pub(crate) fn from_template(
+    fn from_template_internal(
         content: &str,
         strip_patterns: &[Vec<String>],
         template_name: &str,
         file_path: &str,
-    ) -> Result<(Self, String)> {
+    ) -> AnyhowResult<(Self, String)> {
         let mut basel_raw = IndexMap::new();
         let mut output_lines = HashSet::new();
         let mut content_lines = Vec::new();
@@ -202,6 +173,16 @@ impl Directives {
             },
             filtered,
         ))
+    }
+
+    pub(crate) fn from_template(
+        content: &str,
+        strip_patterns: &[Vec<String>],
+        template_name: &str,
+        file_path: &str,
+    ) -> Result<(Self, String)> {
+        Self::from_template_internal(content, strip_patterns, template_name, file_path)
+            .map_err(Error::template)
     }
 
     fn normalize(directive: &str) -> String {

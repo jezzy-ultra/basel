@@ -7,28 +7,8 @@
 #![feature(multiple_supertrait_upcastable)]
 #![feature(strict_provenance_lints)]
 
-use std::path::PathBuf;
-
-use basel::templates::Loader;
-use basel::{Config, Result, Upstream, render, schemes};
+use basel::{Result, cli};
 
 fn main() -> Result<()> {
-    env_logger::init();
-
-    let expanded = shellexpand::tilde("~/src/cutiepro");
-    let repo_path = PathBuf::from(expanded.as_ref());
-    let cfg = Config {
-        upstream: Some(Upstream {
-            repo_path: Some(repo_path),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-
-    let templates = Loader::new(&cfg)?;
-    let schemes = schemes::load_all(&cfg.dirs.schemes)?;
-
-    render::render(&templates, &schemes, &cfg)?;
-
-    Ok(())
+    cli::run()
 }

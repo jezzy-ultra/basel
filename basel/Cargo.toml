@@ -11,6 +11,7 @@ categories.workspace = true
 default-run = "basel"
 
 [dependencies]
+anyhow.workspace = true
 clap.workspace = true
 comrak.workspace = true
 deunicode.workspace = true
@@ -27,6 +28,7 @@ owo-colors.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 shellexpand.workspace = true
 taplo.workspace = true
 thiserror.workspace = true

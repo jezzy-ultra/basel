@@ -12,55 +12,69 @@
 #![allow(clippy::missing_errors_doc, reason = "todo: documentation")]
 #![allow(clippy::redundant_pub_crate, reason = "a fuckton of false positives")]
 
-use std::io::Error as IoError;
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::Path;
 use std::result::Result as StdResult;
 
 use serde::Serialize;
 
-use crate::format::Error as FormatError;
-use crate::render::Error as RenderError;
-use crate::schemes::Error as SchemeError;
-use crate::templates::Error as TemplateError;
-use crate::upstream::Error as UpstreamError;
-
-mod directives;
+pub mod cli;
+pub mod config;
+pub mod directives;
 mod format;
+pub mod manifest;
+mod names;
 pub mod render;
+mod roles;
 pub mod schemes;
-mod slots;
 mod swatches;
 pub mod templates;
-mod upstream;
+pub mod upstream;
 
-pub use crate::schemes::{Meta, ResolvedSlot};
-pub use crate::slots::{BaseSlot, Error as SlotError, OptionalSlot, SlotKind, SlotName, SlotValue};
-pub use crate::swatches::{
-    Error as SwatchError, Swatch, SwatchAsciiName, SwatchColor, SwatchDisplayName,
+pub use crate::config::{Config, Error as ConfigError};
+pub use crate::manifest::Error as ManifestError;
+pub use crate::names::Error as NameError;
+pub use crate::roles::{BaseRole, Error as RoleError, OptionalRole, RoleKind, RoleName, RoleValue};
+pub use crate::schemes::{
+    Error as SchemeError, Meta, ResolvedRole, Scheme, SchemeAsciiName, SchemeName,
 };
+pub use crate::swatches::{Error as SwatchError, Swatch, SwatchAsciiName, SwatchColor, SwatchName};
+pub use crate::upstream::Error as UpstreamError;
 
-pub(crate) const SCHEME_MARKER: &str = "SCHEME";
-pub(crate) const SWATCH_MARKER: &str = "SWATCH";
-pub(crate) const SLOT_VARIANT_SEPARATOR: char = '_';
-pub(crate) const TEMPLATE_SUFFIX: &str = ".jinja";
-pub(crate) const SKIP_RENDERING_PREFIX: char = '_';
+pub const SCHEME_MARKER: &str = "SCHEME";
+pub const SCHEME_VARIABLE: &str = "scheme";
+pub const SWATCH_MARKER: &str = "SWATCH";
+pub const SWATCH_VARIABLE: &str = "swatch";
+pub const ROLE_VARIANT_SEPARATOR: char = '_';
+pub const SET_TEST_OBJECT: &str = "_set";
+pub const JINJA_TEMPLATE_SUFFIX: &str = ".jinja";
+pub const SKIP_RENDERING_PREFIX: char = '_';
 
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("configuration error: {0}")]
-    Config(String),
+    Config(#[from] ConfigError),
     #[error("upstream error: {0}")]
-    Upstream(Box<UpstreamError>),
+    Upstream(#[from] UpstreamError),
+    #[error("name validation error: {0}")]
+    Name(#[from] NameError),
+    #[error("palette error: {0}")]
+    Swatch(#[from] SwatchError),
+    #[error("role error: {0}")]
+    Role(#[from] RoleError),
     #[error("scheme error: {0}")]
-    Scheme(Box<SchemeError>),
-    #[error("template error: {0}")]
-    Template(Box<TemplateError>),
-    #[error("formatting error: {0}")]
-    Formatting(Box<FormatError>),
-    #[error("render error: {0}")]
-    Render(Box<RenderError>),
+    Scheme(#[from] SchemeError),
+    #[error("error processing template: {0}")]
+    Template(String),
+    #[error("manifest error: {0}")]
+    Manifest(#[from] ManifestError),
+    #[error("error rendering: {0}")]
+    Rendering(String),
+    #[error("error formatting: {0}")]
+    Formatting(String),
     #[error("file system error: {0}")]
-    Io(#[from] IoError),
+    Io(#[from] io::Error),
     #[error("internal error in {module}: {reason}! this is a bug!")]
     InternalBug {
         module: &'static str,
@@ -68,52 +82,23 @@ pub enum Error {
     },
 }
 
+impl Error {
+    pub(crate) fn rendering(err: impl Into<anyhow::Error>) -> Self {
+        Self::Rendering(err.into().to_string())
+    }
+
+    pub(crate) fn template(err: impl Into<anyhow::Error>) -> Self {
+        Self::Template(err.into().to_string())
+    }
+
+    pub(crate) fn formatting(err: impl Into<anyhow::Error>) -> Self {
+        Self::Formatting(err.into().to_string())
+    }
+}
+
 pub type Result<T> = StdResult<T, Error>;
 
-macro_rules! module_error_with_internal_bug_from {
-    ($error_type:ty, $variant:ident, $module:literal) => {
-        impl From<Box<$error_type>> for Error {
-            fn from(err: Box<$error_type>) -> Self {
-                match *err {
-                    <$error_type>::InternalBug(reason) => Self::InternalBug {
-                        module: $module,
-                        reason,
-                    },
-                    other => Self::$variant(Box::new(other)),
-                }
-            }
-        }
-
-        impl From<$error_type> for Error {
-            fn from(err: $error_type) -> Self {
-                Box::new(err).into()
-            }
-        }
-    };
-}
-
-macro_rules! module_error_from {
-    ($error_type:ty, $variant:ident) => {
-        impl From<Box<$error_type>> for Error {
-            fn from(err: Box<$error_type>) -> Self {
-                Self::$variant(err)
-            }
-        }
-
-        impl From<$error_type> for Error {
-            fn from(err: $error_type) -> Self {
-                Box::new(err).into()
-            }
-        }
-    };
-}
-
-module_error_from!(UpstreamError, Upstream);
-module_error_with_internal_bug_from!(SchemeError, Scheme, "schemes");
-module_error_with_internal_bug_from!(TemplateError, Template, "templates");
-module_error_with_internal_bug_from!(RenderError, Render, "render");
-module_error_from!(FormatError, Formatting);
-
+#[non_exhaustive]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum ColorFormat {
     #[default]
@@ -121,6 +106,7 @@ pub enum ColorFormat {
     Name,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum TextFormat {
     #[default]
@@ -128,56 +114,27 @@ pub enum TextFormat {
     Ascii,
 }
 
-#[derive(Debug)]
-pub struct Dirs {
-    pub schemes: String,
-    pub templates: String,
-    pub render: String,
-}
-
-impl Default for Dirs {
-    fn default() -> Self {
-        Self {
-            schemes: "schemes".to_owned(),
-            templates: "templates".to_owned(),
-            render: "render".to_owned(),
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Upstream {
-    pub repo_path: Option<PathBuf>,
-    pub pattern: Option<String>,
-    pub branch: Option<String>,
-}
-
-#[derive(Debug)]
-pub struct Config {
-    pub dirs: Dirs,
-    pub upstream: Option<Upstream>,
-    pub strip_directives: Vec<Vec<String>>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            dirs: Dirs::default(),
-            upstream: None,
-            strip_directives: vec![vec![
-                "#:tombi".to_owned(),
-                "lint.disabled".to_owned(),
-                "=".to_owned(),
-                "true".to_owned(),
-            ]],
-        }
-    }
-}
-
+#[non_exhaustive]
 #[derive(Debug, Default, Clone)]
 pub struct Special {
     pub upstream_file: Option<String>,
     pub upstream_repo: Option<String>,
+}
+
+pub(crate) fn extract_filename_from(path: &str) -> &str {
+    if let Some((_, file)) = path.rsplit_once('/') {
+        return file;
+    }
+
+    path
+}
+
+pub(crate) fn extract_parents_from(path: &str) -> Option<&str> {
+    if let Some((ancestors, _)) = path.rsplit_once('/') {
+        return Some(ancestors);
+    }
+
+    None
 }
 
 pub(crate) fn has_extension(path: &Path, extension: &str) -> bool {

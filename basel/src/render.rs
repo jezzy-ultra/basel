@@ -1,36 +1,109 @@
-use std::collections::BTreeMap;
 use std::fs;
-use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context as _, Result as AnyhowResult};
 use indexmap::IndexMap;
-use log::{info, warn};
-use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind, Value as JinjaValue};
+use log::{debug, info, warn};
+use minijinja::Template as JinjaTemplate;
 
+use crate::config::Config;
 use crate::directives::Directives;
 use crate::format::format;
+use crate::manifest::{FileStatus, Manifest};
 use crate::schemes::Scheme;
 use crate::templates::Loader;
 use crate::upstream::{GitCache, GitInfo};
 use crate::{
-    Config as BaselConfig, Result, SCHEME_MARKER, SKIP_RENDERING_PREFIX, SWATCH_MARKER, Special,
-    TEMPLATE_SUFFIX, upstream,
+    Error, JINJA_TEMPLATE_SUFFIX, Result, SCHEME_MARKER, SET_TEST_OBJECT, SKIP_RENDERING_PREFIX,
+    SWATCH_MARKER, SWATCH_VARIABLE, Special, upstream,
 };
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("failed to render template `{template}` with scheme `{scheme}`: {src}")]
-    Rendering {
-        template: String,
-        scheme: String,
-        src: JinjaError,
-    },
-    #[error("failed to create output directory `{path}`: {src}")]
-    CreatingDirectory { path: String, src: IoError },
-    #[error("failed to write rendered file `{path}`: {src}")]
-    WritingFile { path: String, src: IoError },
-    #[error("{0}")]
-    InternalBug(String),
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteMode {
+    Smart,
+    Skip,
+    Force,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Decision {
+    Create,
+    Recreate,
+    Update,
+    Overwrite,
+    Skip,
+    Conflict,
+}
+
+impl Decision {
+    const fn should_write(self) -> bool {
+        use Decision::{Conflict, Create, Overwrite, Recreate, Skip, Update};
+
+        match self {
+            Create | Recreate | Update | Overwrite => true,
+            Skip | Conflict => false,
+        }
+    }
+
+    const fn log_action(self) -> &'static str {
+        use Decision::{Conflict, Create, Overwrite, Recreate, Skip, Update};
+
+        match self {
+            Create => "creating",
+            Recreate => "recreating",
+            Update => "updating",
+            Overwrite => "overwriting",
+            Skip => "skipped",
+            Conflict => "conflict",
+        }
+    }
+}
+
+const fn decide_write(status: FileStatus, mode: WriteMode) -> Decision {
+    use Decision::{Conflict, Create, Overwrite, Recreate, Skip, Update};
+    use FileStatus::{NotTracked, Tracked};
+
+    match (status, mode) {
+        (NotTracked, _) => Create,
+        (
+            Tracked {
+                file_exists: false, ..
+            },
+            _,
+        ) => Recreate,
+        (
+            Tracked {
+                user_modified: true,
+                ..
+            },
+            WriteMode::Force,
+        ) => Overwrite,
+        (
+            Tracked {
+                user_modified: true,
+                ..
+            },
+            WriteMode::Smart,
+        ) => Conflict,
+        (
+            Tracked {
+                user_modified: false,
+                template_changed: false,
+                scheme_changed: false,
+                ..
+            },
+            _,
+        )
+        | (Tracked { .. }, WriteMode::Skip) => Skip,
+        (
+            Tracked {
+                user_modified: false,
+                ..
+            },
+            _,
+        ) => Update,
+    }
 }
 
 fn uses_swatch_iteration(template_name: &str) -> bool {
@@ -40,19 +113,18 @@ fn uses_swatch_iteration(template_name: &str) -> bool {
 fn resolve_path(
     template_name: &str,
     scheme_name: &str,
-    config: &BaselConfig,
+    config: &Config,
     swatch_name: Option<&str>,
-) -> Result<PathBuf> {
+) -> AnyhowResult<PathBuf> {
     let relative_path = template_name
-        .strip_suffix(TEMPLATE_SUFFIX)
+        .strip_suffix(JINJA_TEMPLATE_SUFFIX)
         .unwrap_or(template_name);
 
     let filename = Path::new(relative_path)
         .file_name()
-        .ok_or_else(|| {
-            Error::InternalBug(format!(
-                "attempted to render to corrupted path `{relative_path}`"
-            ))
+        .ok_or_else(|| Error::InternalBug {
+            module: "render",
+            reason: format!("attempted to render to corrupted path `{relative_path}`"),
         })?
         .to_string_lossy();
 
@@ -73,47 +145,6 @@ fn resolve_path(
         .join(scheme_name)
         .join(parent_dirs)
         .join(output))
-}
-
-fn file(
-    context: &BTreeMap<String, JinjaValue>,
-    template: &minijinja::Template<'_, '_>,
-    scheme_name: &str,
-    render_path: &PathBuf,
-    directives: &Directives,
-) -> Result<()> {
-    if !context.contains_key("_set") {
-        return Err(Error::InternalBug("context missing `_set`".to_owned()).into());
-    }
-
-    let rendered = template.render(context).map_err(|src| match src.kind() {
-        JinjaErrorKind::UndefinedError => Error::InternalBug(format!("{src}")),
-        _ => Error::Rendering {
-            template: template.name().to_owned(),
-            scheme: scheme_name.to_owned(),
-            src,
-        },
-    })?;
-
-    let header = directives.make_header(render_path);
-    let output = format!("{header}{rendered}");
-
-    if let Some(parent) = render_path.parent() {
-        fs::create_dir_all(parent).map_err(|src| Error::CreatingDirectory {
-            path: parent.to_string_lossy().to_string(),
-            src,
-        })?;
-    }
-
-    fs::write(render_path, output).map_err(|src| Error::WritingFile {
-        path: render_path.to_string_lossy().to_string(),
-        src,
-    })?;
-    info!("generated {}", render_path.display());
-
-    format(render_path)?;
-
-    Ok(())
 }
 
 fn strip_prefix(path: &Path, prefix: &Path, context: &str) -> Option<PathBuf> {
@@ -181,28 +212,28 @@ fn build_upstream(
     scheme_name: &str,
     render_path: &Path,
     git_cache: &mut GitCache,
-    config: &BaselConfig,
+    config: &Config,
 ) -> Special {
-    let upstream_cfg = config.upstream.as_ref();
-
-    let Some((git_info, rel_path)) =
-        (if let Some(repo_path) = upstream_cfg.and_then(|u| u.repo_path.as_ref()) {
-            resolve_with_repo_path(
-                repo_path,
-                scheme_name,
-                &config.dirs.render,
-                render_path,
-                git_cache,
-            )
-        } else {
-            resolve_with_autodetect(render_path, git_cache)
-        })
-    else {
+    let Some(upstream_cfg) = &config.upstream else {
         return Special::default();
     };
 
-    let pattern_override = upstream_cfg.and_then(|u| u.pattern.as_deref());
-    let branch_override = upstream_cfg.and_then(|u| u.branch.as_deref());
+    let Some((git_info, rel_path)) = (if let Some(repo_path) = upstream_cfg.repo_path.as_deref() {
+        resolve_with_repo_path(
+            repo_path,
+            scheme_name,
+            &config.dirs.render,
+            render_path,
+            git_cache,
+        )
+    } else {
+        resolve_with_autodetect(render_path, git_cache)
+    }) else {
+        return Special::default();
+    };
+
+    let pattern_override = upstream_cfg.pattern.as_deref();
+    let branch_override = upstream_cfg.branch.as_deref();
 
     let url = upstream::build_url(&git_info, &rel_path, pattern_override, branch_override);
     let repo = upstream::extract_base_url(&url);
@@ -213,101 +244,235 @@ fn build_upstream(
     }
 }
 
-struct RenderContext<'a> {
-    scheme: &'a Scheme,
-    scheme_name: &'a str,
-    template_name: &'a str,
-    directives: &'a Directives,
-    config: &'a BaselConfig,
-    git_cache: &'a mut GitCache,
-    current_swatch: Option<&'a str>,
-}
-
-fn render_one(
-    template: &minijinja::Template<'_, '_>,
-    render_ctx: &mut RenderContext<'_>,
-) -> Result<()> {
-    let path = resolve_path(
-        render_ctx.template_name,
-        render_ctx.scheme_name,
-        render_ctx.config,
-        render_ctx.current_swatch,
-    )?;
-
-    let special = build_upstream(
-        render_ctx.scheme_name,
-        &path,
-        render_ctx.git_cache,
-        render_ctx.config,
-    );
-
-    let ctx = render_ctx.scheme.to_context(
-        render_ctx.directives.config().color_format(),
-        render_ctx.directives.config().text_format(),
-        &special,
-        render_ctx.current_swatch,
-    )?;
-
-    file(
-        &ctx,
-        template,
-        render_ctx.scheme_name,
-        &path,
-        render_ctx.directives,
-    )
-}
-
 fn should_render(name: &str) -> bool {
     !name
         .split('/')
         .any(|p| p.starts_with(SKIP_RENDERING_PREFIX))
 }
 
-pub fn render(
-    templates: &Loader,
-    schemes: &IndexMap<String, Scheme>,
-    config: &BaselConfig,
-) -> Result<()> {
-    let mut git_cache = GitCache::new();
+#[non_exhaustive]
+#[derive(Debug)]
+pub struct Context {
+    pub manifest: Manifest,
+    pub git_cache: GitCache,
+    pub write_mode: WriteMode,
+    pub dry_run: bool,
+}
 
-    for (template_name, (template, directives)) in templates.templates_with_directives()? {
-        if should_render(template_name) {
-            if uses_swatch_iteration(template_name) {
-                if !template.source().contains(SWATCH_MARKER) {
-                    warn!(
-                        "template `{template_name}` has `{SWATCH_MARKER}` in filename but doesn't \
-                         use it inside template"
-                    );
-                }
+impl Context {
+    pub fn new(write_mode: WriteMode, dry_run: bool) -> Result<Self> {
+        Ok(Self {
+            manifest: Manifest::load_or_create()?,
+            git_cache: GitCache::new(),
+            write_mode,
+            dry_run,
+        })
+    }
 
-                for (scheme_name, scheme) in schemes {
-                    for swatch in &scheme.palette {
-                        render_one(&template, &mut RenderContext {
-                            scheme,
-                            scheme_name,
-                            template_name,
-                            directives,
-                            config,
-                            git_cache: &mut git_cache,
-                            current_swatch: Some(swatch.name().as_str()),
-                        })?;
-                    }
-                }
+    pub fn save(self) -> Result<()> {
+        if !self.dry_run {
+            self.manifest.save()?;
+        }
+
+        Ok(())
+    }
+}
+
+// TODO: break up big function by extracting helper(s)
+fn render_single(
+    scheme: &Scheme,
+    template_name: &str,
+    template: &JinjaTemplate<'_, '_>,
+    directives: &Directives,
+    config: &Config,
+    context: &mut Context,
+    current_swatch: Option<&str>,
+) -> AnyhowResult<()> {
+    let scheme_name = scheme.name.as_str();
+
+    let path = resolve_path(template_name, scheme_name, config, current_swatch)?;
+
+    let special = build_upstream(scheme_name, &path, &mut context.git_cache, config);
+
+    let scheme_ctx = scheme.to_context(
+        directives.config.color_format,
+        directives.config.text_format,
+        &special,
+        current_swatch,
+    )?;
+
+    if !scheme_ctx.contains_key(SET_TEST_OBJECT) {
+        return Err(Error::InternalBug {
+            module: "render",
+            reason: format!(
+                "scheme `{scheme_name}` context for template `{template_name}` missing \
+                 `{SET_TEST_OBJECT}` template variable"
+            ),
+        }
+        .into());
+    }
+
+    let rendered = template.render(&scheme_ctx).with_context(|| {
+        format!("rendering template `{template_name}` with scheme `{scheme_name}`")
+    })?;
+
+    let header = directives.make_header(&path);
+    let output = format!("{header}{rendered}");
+
+    let status = context.manifest.check_file(&path, template, scheme)?;
+    let decision = decide_write(status, context.write_mode);
+
+    match decision {
+        // TODO: add interactive mode (possibly as default behavior?)
+        Decision::Conflict => {
+            warn!(
+                "conflict: `{}` (user-modified, use `-f`/`--force` to overwrite)",
+                path.display()
+            );
+        }
+        _ if decision.should_write() => {
+            if context.dry_run {
+                info!(
+                    "would write `{}` ({})",
+                    path.display(),
+                    decision.log_action()
+                );
             } else {
-                for (scheme_name, scheme) in schemes {
-                    render_one(&template, &mut RenderContext {
-                        scheme,
-                        scheme_name,
-                        template_name,
-                        directives,
-                        config,
-                        git_cache: &mut git_cache,
-                        current_swatch: None,
-                    })?;
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("writing file `{}`", path.display()))?;
                 }
+
+                fs::write(&path, &output)
+                    .with_context(|| format!("writing file `{}`", path.display()))?;
+
+                let entry = Manifest::make_entry(path.clone(), template, scheme, &output)?;
+                context.manifest.insert(entry);
+
+                info!("generated `{}`", path.display());
+
+                format(&path)?;
             }
+        }
+        _ => {
+            debug!("skipped `{}` ({})", path.display(), decision.log_action());
         }
     }
 
     Ok(())
+}
+
+fn apply_internal(
+    scheme: &Scheme,
+    template_name: &str,
+    template: &JinjaTemplate<'_, '_>,
+    directives: &Directives,
+    config: &Config,
+    context: &mut Context,
+) -> AnyhowResult<()> {
+    if uses_swatch_iteration(template_name) {
+        if !template.source().contains(SWATCH_VARIABLE) {
+            warn!(
+                "template `{template_name}` has `{SWATCH_MARKER}` in filename but doesn't use \
+                 {SWATCH_VARIABLE} inside template",
+            );
+        }
+
+        for swatch in &scheme.palette {
+            render_single(
+                scheme,
+                template_name,
+                template,
+                directives,
+                config,
+                context,
+                Some(swatch.name.as_str()),
+            )?;
+        }
+    } else {
+        render_single(
+            scheme,
+            template_name,
+            template,
+            directives,
+            config,
+            context,
+            None,
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn apply(
+    scheme: &Scheme,
+    template_name: &str,
+    template: &JinjaTemplate<'_, '_>,
+    directives: &Directives,
+    config: &Config,
+    context: &mut Context,
+) -> Result<()> {
+    apply_internal(scheme, template_name, template, directives, config, context)
+        .map_err(Error::rendering)
+}
+
+fn scheme_internal(
+    scheme: &Scheme,
+    templates: &Loader,
+    config: &Config,
+    context: &mut Context,
+) -> AnyhowResult<()> {
+    for (template_name, (template, directives)) in templates.with_directives()? {
+        if !should_render(template_name) {
+            continue;
+        }
+
+        apply(
+            scheme,
+            template_name,
+            &template,
+            directives,
+            config,
+            context,
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn scheme(
+    scheme: &Scheme,
+    templates: &Loader,
+    config: &Config,
+    context: &mut Context,
+) -> Result<()> {
+    scheme_internal(scheme, templates, config, context).map_err(Error::rendering)
+}
+
+fn all_internal(
+    templates: &Loader,
+    schemes: &IndexMap<String, Scheme>,
+    config: &Config,
+    write_mode: WriteMode,
+    dry_run: bool,
+) -> AnyhowResult<()> {
+    let mut ctx = Context::new(write_mode, dry_run)?;
+
+    for scheme_ref in schemes.values() {
+        scheme(scheme_ref, templates, config, &mut ctx)?;
+    }
+
+    ctx.save()?;
+
+    Ok(())
+}
+
+pub fn all(
+    templates: &Loader,
+    schemes: &IndexMap<String, Scheme>,
+    config: &Config,
+    write_mode: WriteMode,
+    dry_run: bool,
+) -> Result<()> {
+    all_internal(templates, schemes, config, write_mode, dry_run).map_err(Error::rendering)
 }

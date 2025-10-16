@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Error as IoError;
 use std::path::Path;
-use std::result::Result as StdResult;
 
+use anyhow::{Context as _, Result as AnyhowResult};
 use comrak::{
     Arena as ComrakArena, ExtensionOptions as ComrakExtensionOptions,
     ListStyleType as ComrakListStyleType, Options as ComrakOptions,
@@ -15,23 +14,7 @@ use quick_xml::events::Event as XmlEvent;
 use quick_xml::{Reader as XmlReader, Writer as XmlWriter};
 use taplo::formatter::Options as TaploOptions;
 
-use crate::{is_json, is_json5, is_jsonc, is_markdown, is_svg, is_toml, is_xml};
-
-#[expect(
-    unnameable_types,
-    reason = "internal error intentionally exposed through public `crate::Error`"
-)]
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("failed to read file `{path}` for formatting: {src}")]
-    Reading { path: String, src: IoError },
-    #[error("failed to write formatted file `{path}`: {src}")]
-    Writing { path: String, src: IoError },
-    #[error("failed to format file `{path}`: {reason}")]
-    Formatting { path: String, reason: String },
-}
-
-pub(crate) type Result<T> = StdResult<T, Error>;
+use crate::{Error, Result, is_json, is_json5, is_jsonc, is_markdown, is_svg, is_toml, is_xml};
 
 fn toml_format_options() -> TaploOptions {
     TaploOptions {
@@ -58,22 +41,22 @@ fn toml_format_options() -> TaploOptions {
     }
 }
 
-fn format_toml(path: &Path) -> Result<()> {
-    let content = fs::read_to_string(path).map_err(|src| Error::Reading {
-        path: path.display().to_string(),
-        src,
-    })?;
+fn format_toml(path: &Path) -> AnyhowResult<()> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
 
     let options = toml_format_options();
-    let formatted = taplo::formatter::format(&content, options);
+    let mut formatted = taplo::formatter::format(&content, options);
+
+    if !formatted.ends_with('\n') {
+        formatted.push('\n');
+    }
 
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
     } else {
-        fs::write(path, formatted).map_err(|src| Error::Writing {
-            path: path.display().to_string(),
-            src,
-        })?;
+        fs::write(path, formatted)
+            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
 
         info!("formatted `{}`", path.display());
     }
@@ -140,21 +123,19 @@ fn markdown_format_options<'a>() -> ComrakOptions<'a> {
     }
 }
 
-fn format_markdown(path: &Path) -> Result<()> {
-    let content = fs::read_to_string(path).map_err(|src| Error::Reading {
-        path: path.display().to_string(),
-        src,
-    })?;
+fn format_markdown(path: &Path) -> AnyhowResult<()> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
+
     let arena = ComrakArena::new();
+
     let options = markdown_format_options();
 
     let root = comrak::parse_document(&arena, &content, &options);
 
     let mut formatted = String::new();
-    comrak::format_commonmark(root, &options, &mut formatted).map_err(|e| Error::Formatting {
-        path: path.display().to_string(),
-        reason: e.to_string(),
-    })?;
+    comrak::format_commonmark(root, &options, &mut formatted)
+        .with_context(|| format!("formatting markdown file `{}`", path.display()))?;
 
     if !formatted.ends_with('\n') {
         formatted.push('\n');
@@ -163,10 +144,8 @@ fn format_markdown(path: &Path) -> Result<()> {
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
     } else {
-        fs::write(path, formatted).map_err(|src| Error::Writing {
-            path: path.display().to_string(),
-            src,
-        })?;
+        fs::write(path, formatted)
+            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
 
         info!("formatted `{}`", path.display());
     }
@@ -197,38 +176,30 @@ fn jsonc_json5_format_options() -> Json5Options {
     }
 }
 
-fn format_json(path: &Path, json_type: &JsonType) -> Result<()> {
-    let content = fs::read_to_string(path).map_err(|src| Error::Reading {
-        path: path.display().to_string(),
-        src,
-    })?;
+fn format_json(path: &Path, json_type: &JsonType) -> AnyhowResult<()> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
 
     let options = match json_type {
         JsonType::Json => json_format_options(),
         JsonType::Jsonc | JsonType::Json5 => jsonc_json5_format_options(),
     };
 
-    let format = Json5Format::with_options(options).map_err(|e| Error::Formatting {
-        path: path.display().to_string(),
-        reason: e.to_string(),
-    })?;
+    let format = Json5Format::with_options(options)
+        .with_context(|| format!("creating json5 formatter for `{}`", path.display()))?;
 
-    let parsed =
-        Json5Parsed::from_str(&content, Some(path.display().to_string())).map_err(|e| {
-            Error::Formatting {
-                path: path.display().to_string(),
-                reason: e.to_string(),
-            }
-        })?;
+    let parsed = Json5Parsed::from_str(&content, Some(path.display().to_string()))
+        .with_context(|| format!("parsing json file `{}`", path.display()))?;
 
-    let formatted_bytes = format.to_utf8(&parsed).map_err(|err| Error::Formatting {
-        path: path.display().to_string(),
-        reason: err.to_string(),
-    })?;
+    let formatted_bytes = format
+        .to_utf8(&parsed)
+        .with_context(|| format!("formatting json file `{}`", path.display()))?;
 
-    let mut formatted = String::from_utf8(formatted_bytes).map_err(|err| Error::Formatting {
-        path: path.display().to_string(),
-        reason: format!("invalid utf-8: {err}"),
+    let mut formatted = String::from_utf8(formatted_bytes).with_context(|| {
+        format!(
+            "converting formatted json to utf-8 for `{}`",
+            path.display()
+        )
     })?;
 
     if !formatted.ends_with('\n') {
@@ -238,10 +209,8 @@ fn format_json(path: &Path, json_type: &JsonType) -> Result<()> {
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
     } else {
-        fs::write(path, formatted).map_err(|src| Error::Writing {
-            path: path.display().to_string(),
-            src,
-        })?;
+        fs::write(path, formatted)
+            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
 
         info!("formatted `{}`", path.display());
     }
@@ -253,11 +222,9 @@ const fn xml_format_options() -> (u8, usize) {
     (b' ', 2)
 }
 
-fn format_xml(path: &Path) -> Result<()> {
-    let content = fs::read_to_string(path).map_err(|src| Error::Reading {
-        path: path.display().to_string(),
-        src,
-    })?;
+fn format_xml(path: &Path) -> AnyhowResult<()> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
 
     let (indent_char, indent_size) = xml_format_options();
 
@@ -271,24 +238,18 @@ fn format_xml(path: &Path) -> Result<()> {
         match reader.read_event() {
             Ok(XmlEvent::Eof) => break,
             Ok(event) => {
-                writer.write_event(event).map_err(|e| Error::Formatting {
-                    path: path.display().to_string(),
-                    reason: format!("xml write error: {e}"),
-                })?;
+                writer
+                    .write_event(event)
+                    .with_context(|| format!("writing xml event for `{}`", path.display()))?;
             }
             Err(e) => {
-                return Err(Error::Formatting {
-                    path: path.display().to_string(),
-                    reason: format!("xml parse error: {e}"),
-                });
+                return Err(e).with_context(|| format!("parsing xml file `{}`", path.display()));
             }
         }
     }
 
-    let mut formatted = String::from_utf8(writer.into_inner()).map_err(|e| Error::Formatting {
-        path: path.display().to_string(),
-        reason: format!("invalid utf-8: {e}"),
-    })?;
+    let mut formatted = String::from_utf8(writer.into_inner())
+        .with_context(|| format!("converting formatted xml to utf-8 for `{}`", path.display()))?;
 
     if !formatted.ends_with('\n') {
         formatted.push('\n');
@@ -297,10 +258,8 @@ fn format_xml(path: &Path) -> Result<()> {
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
     } else {
-        fs::write(path, formatted).map_err(|src| Error::Writing {
-            path: path.display().to_string(),
-            src,
-        })?;
+        fs::write(path, formatted)
+            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
 
         info!("formatted `{}`", path.display());
     }
@@ -308,7 +267,7 @@ fn format_xml(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn format(path: &Path) -> Result<()> {
+fn format_internal(path: &Path) -> AnyhowResult<()> {
     if is_toml(path) {
         format_toml(path)?;
     }
@@ -334,4 +293,8 @@ pub(crate) fn format(path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub(crate) fn format(path: &Path) -> Result<()> {
+    format_internal(path).map_err(Error::formatting)
 }

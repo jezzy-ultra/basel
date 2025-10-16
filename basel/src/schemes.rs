@@ -14,12 +14,34 @@ use toml::de::Error as TomlDeError;
 use toml::{Table, Value as TomlValue};
 use walkdir::WalkDir;
 
-use crate::slots::{self, Error as SlotError, SlotKind, SlotName, SlotValue};
+use crate::roles::{self, Error as RoleError, RoleKind, RoleName, RoleValue};
 use crate::swatches::{
-    ColorObject, Error as SwatchError, RenderConfig, Swatch, check_ascii_collisions,
-    check_case_collisions,
+    ColorObject, RenderConfig, Swatch, check_ascii_collisions, check_case_collisions,
 };
-use crate::{ColorFormat, Special, TextFormat, is_toml};
+use crate::{ColorFormat, Result, Special, TextFormat, is_toml, name_type};
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("role `{role}` references non-existent swatch `{swatch}`")]
+    UndefinedSwatch { role: String, swatch: String },
+    #[error("invalid toml syntax in `{path}`: {src}")]
+    ParsingRaw { path: String, src: Box<TomlDeError> },
+    #[error("invalid meta field `{field}`: {reason}")]
+    InvalidMeta { field: String, reason: String },
+    #[error("invalid roles structure in `{path}`: {reason}")]
+    InvalidRolesStructure { path: String, reason: String },
+    #[error("failed to deserialize `{section}` section in `{path}`: {src}")]
+    Deserializing {
+        section: String,
+        path: String,
+        src: Box<TomlDeError>,
+    },
+    #[error("failed to serialize scheme: {src}")]
+    Serializing { src: Box<JsonError> },
+    #[error("failed to read scheme `{path}`: {src}")]
+    ReadingFile { path: String, src: IoError },
+}
 
 const MAX_META_FIELD_LENGTH: usize = 1000;
 
@@ -33,49 +55,24 @@ fn validate_meta_field(name: &str, value: Option<&String>) -> Result<()> {
                 "too long ({} characters; max is {MAX_META_FIELD_LENGTH})",
                 text.len()
             ),
-        });
+        }
+        .into());
     }
 
     Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("slot resolution error: {0}")]
-    Slot(#[from] SlotError),
-    #[error("failed to parse palette: {0}")]
-    Swatch(#[from] SwatchError),
-    #[error("slot `{slot}` references non-existent swatch `{swatch}`")]
-    UndefinedSwatch { slot: String, swatch: String },
-    #[error("invalid toml syntax in `{path}`: {src}")]
-    ParsingRaw { path: String, src: TomlDeError },
-    #[error("invalid meta field `{field}`: {reason}")]
-    InvalidMeta { field: String, reason: String },
-    #[error("invalid slots structure in `{path}`: {reason}")]
-    InvalidSlotsStructure { path: String, reason: String },
-    #[error("failed to deserialize `{section}` section in `{path}`: {src}")]
-    Deserializing {
-        section: String,
-        path: String,
-        src: Box<TomlDeError>,
-    },
-    #[error("failed to serialize scheme: {src}")]
-    Serializing { src: JsonError },
-    #[error("failed to read scheme `{path}`: {src}")]
-    ReadingFile { path: String, src: IoError },
-    #[error("{0}")]
-    InternalBug(String),
-}
-
-pub type Result<T> = StdResult<T, Error>;
-
+#[non_exhaustive]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ResolvedSlot {
+pub struct ResolvedRole {
     pub hex: String,
     pub swatch: String,
     pub ascii: String,
 }
 
+name_type!(SchemeName, SchemeAsciiName, "scheme");
+
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Meta {
     pub author: Option<String>,
@@ -88,128 +85,130 @@ pub struct Meta {
 
 #[derive(Debug, Serialize)]
 struct RawScheme {
+    scheme: Option<SchemeName>,
+    scheme_ascii: Option<SchemeAsciiName>,
     meta: Meta,
     palette: IndexSet<Swatch>,
-    slots: IndexMap<SlotName, SlotValue>,
+    roles: IndexMap<RoleName, RoleValue>,
 }
 
 impl RawScheme {
-    fn parse_slot(
-        slot_key: &str,
+    fn parse_role(
+        role_key: &str,
         val: &TomlValue,
         path: &str,
-        parsed: &mut IndexMap<SlotName, SlotValue>,
+        parsed: &mut IndexMap<RoleName, RoleValue>,
     ) -> Result<()> {
-        let slot_name = slot_key
+        let role_name = role_key
             .parse()
-            .map_err(|_src| Error::InvalidSlotsStructure {
+            .map_err(|_src| Error::InvalidRolesStructure {
                 path: path.to_owned(),
-                reason: format!("invalid slot name: `{slot_key}`"),
+                reason: format!("invalid role name: `{role_key}`"),
             })?;
 
-        let val_str = val.as_str().ok_or_else(|| Error::InvalidSlotsStructure {
+        let val_str = val.as_str().ok_or_else(|| Error::InvalidRolesStructure {
             path: path.to_owned(),
-            reason: format!("slot `{slot_key}` must be a string"),
+            reason: format!("role `{role_key}` must be a string"),
         })?;
 
-        parsed.insert(slot_name, SlotValue::parse(val_str)?);
+        parsed.insert(role_name, RoleValue::parse(val_str)?);
         Ok(())
     }
 
-    fn parse_slots(
-        slots_val: &toml::Value,
+    fn parse_roles(
+        roles_val: &toml::Value,
         path: &String,
-    ) -> Result<IndexMap<SlotName, SlotValue>> {
+    ) -> Result<IndexMap<RoleName, RoleValue>> {
         let mut result = IndexMap::new();
 
-        let table = slots_val
+        let table = roles_val
             .as_table()
-            .ok_or_else(|| Error::InvalidSlotsStructure {
+            .ok_or_else(|| Error::InvalidRolesStructure {
                 path: path.to_owned(),
-                reason: "`slots` must be a table".to_owned(),
+                reason: "`roles` must be a table".to_owned(),
             })?;
 
         for (key, val) in table {
             if let Some(nested_table) = val.as_table() {
                 for (nested_key, nested_val) in nested_table {
                     let full_key = format!("{key}.{nested_key}");
-                    Self::parse_slot(&full_key, nested_val, path, &mut result)?;
+                    Self::parse_role(&full_key, nested_val, path, &mut result)?;
                 }
             } else {
-                Self::parse_slot(key, val, path, &mut result)?;
+                Self::parse_role(key, val, path, &mut result)?;
             }
         }
 
         Ok(result)
     }
 
-    fn resolve_slot(
+    fn resolve_role(
         &self,
-        slot: SlotName,
-        visited: &mut IndexSet<SlotName>,
-    ) -> Result<ResolvedSlot> {
-        if !visited.insert(slot) {
+        role: RoleName,
+        visited: &mut IndexSet<RoleName>,
+    ) -> Result<ResolvedRole> {
+        if !visited.insert(role) {
             let mut chain: Vec<String> = visited.iter().map(ToString::to_string).collect();
-            chain.push(slot.to_string());
+            chain.push(role.to_string());
 
-            return Err(Error::Slot(SlotError::CircularReference(chain)));
+            return Err(crate::Error::Role(RoleError::CircularReference(chain)));
         }
 
-        match self.slots.get(&slot) {
-            Some(SlotValue::Swatch(display_name)) => {
-                self.palette.get(display_name.as_str()).map_or_else(
+        match self.roles.get(&role) {
+            Some(RoleValue::Swatch(display_name)) => {
+                Ok(self.palette.get(display_name.as_str()).map_or_else(
                     || {
                         Err(Error::UndefinedSwatch {
                             swatch: display_name.to_string(),
-                            slot: slot.to_string(),
+                            role: role.to_string(),
                         })
                     },
                     |swatch| {
-                        Ok(ResolvedSlot {
+                        Ok(ResolvedRole {
                             hex: swatch.hex().to_string(),
-                            swatch: swatch.name().to_string(),
-                            ascii: swatch.ascii().to_string(),
+                            swatch: swatch.name.to_string(),
+                            ascii: swatch.ascii.to_string(),
                         })
                     },
-                )
+                )?)
             }
-            Some(SlotValue::Slot(slot_name)) => self.resolve_slot(*slot_name, visited),
-            None => match slot.classify() {
-                SlotKind::Base(_) => Err(SlotError::MissingRequired(slot.to_string()).into()),
-                SlotKind::Optional(opt) => self.resolve_slot(*opt.base(), visited),
+            Some(RoleValue::Role(role_name)) => self.resolve_role(*role_name, visited),
+            None => match role.classify() {
+                RoleKind::Base(_) => Err(RoleError::MissingRequired(role.to_string()).into()),
+                RoleKind::Optional(opt) => self.resolve_role(*opt.base(), visited),
             },
         }
     }
 
-    fn resolve_slots(&self) -> Result<IndexMap<SlotName, ResolvedSlot>> {
-        let mut resolved_slots = IndexMap::new();
-        let mut missing_slots: Vec<String> = Vec::new();
+    fn resolve_roles(&self) -> Result<IndexMap<RoleName, ResolvedRole>> {
+        let mut resolved_roles = IndexMap::new();
+        let mut missing_roles: Vec<String> = Vec::new();
 
-        for base_slot in slots::base() {
-            if !self.slots.contains_key(&base_slot) {
-                missing_slots.push(base_slot.to_string());
+        for base_role in roles::base() {
+            if !self.roles.contains_key(&base_role) {
+                missing_roles.push(base_role.to_string());
             }
         }
 
-        if !missing_slots.is_empty() {
-            return Err(SlotError::MissingRequired(format!(
-                "missing required slots: {}",
-                missing_slots.join(", ")
+        if !missing_roles.is_empty() {
+            return Err(RoleError::MissingRequired(format!(
+                "missing required roles: {}",
+                missing_roles.join(", ")
             ))
             .into());
         }
 
-        for slot in slots::iter() {
+        for role in roles::iter() {
             let mut visited = IndexSet::new();
-            match self.resolve_slot(slot, &mut visited) {
+            match self.resolve_role(role, &mut visited) {
                 Ok(resolved) => {
-                    resolved_slots.insert(slot, resolved);
+                    resolved_roles.insert(role, resolved);
                 }
                 Err(e) => return Err(e),
             }
         }
 
-        Ok(resolved_slots)
+        Ok(resolved_roles)
     }
 
     fn parse_palette(val: &TomlValue, path: &str) -> Result<IndexSet<Swatch>> {
@@ -234,29 +233,48 @@ impl RawScheme {
         Ok(palette)
     }
 
-    fn into_scheme(self, name: &str) -> Result<Scheme> {
-        let resolved_slots = self.resolve_slots()?;
+    fn scheme_names(&self, fallback_name: &str) -> Result<(SchemeName, SchemeAsciiName)> {
+        let name = match self.scheme.clone() {
+            Some(name) => name,
+            None => SchemeName::parse(fallback_name)?,
+        };
+
+        let name_ascii = match self.scheme_ascii.clone() {
+            Some(ascii) => ascii,
+            None => name.to_ascii()?,
+        };
+
+        Ok((name, name_ascii))
+    }
+
+    fn into_scheme(self, fallback_name: &str) -> Result<Scheme> {
+        let resolved_roles = self.resolve_roles()?;
+        let (scheme, scheme_ascii) = Self::scheme_names(&self, fallback_name)?;
 
         Ok(Scheme {
-            scheme: name.to_owned(),
-            meta: self.meta,
+            name: scheme,
+            name_ascii: scheme_ascii,
+            meta: self.meta.clone(),
             palette: self.palette,
-            slots: self.slots,
-            resolved_slots,
+            roles: self.roles,
+            resolved_roles,
         })
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Serialize)]
 pub struct Scheme {
-    #[serde(rename(serialize = "SCHEME"))]
-    pub scheme: String,
+    #[serde(rename(serialize = "scheme"))]
+    pub name: SchemeName,
+    #[serde(rename(serialize = "scheme_ascii"))]
+    pub name_ascii: SchemeAsciiName,
     pub meta: Meta,
     pub palette: IndexSet<Swatch>,
     #[serde(skip)]
-    pub slots: IndexMap<SlotName, SlotValue>,
+    pub roles: IndexMap<RoleName, RoleValue>,
     #[serde(flatten)]
-    pub resolved_slots: IndexMap<SlotName, ResolvedSlot>,
+    pub resolved_roles: IndexMap<RoleName, ResolvedRole>,
 }
 
 impl Scheme {
@@ -267,9 +285,10 @@ impl Scheme {
     }
 
     fn insert_meta(&self, context: &mut BTreeMap<String, JinjaValue>, config: &Arc<RenderConfig>) {
+        context.insert("scheme".to_owned(), JinjaValue::from_serialize(&self.name));
         context.insert(
-            "SCHEME".to_owned(),
-            JinjaValue::from_serialize(&self.scheme),
+            "scheme_ascii".to_owned(),
+            JinjaValue::from_serialize(&self.name_ascii),
         );
 
         let author_ascii =
@@ -295,16 +314,16 @@ impl Scheme {
         context.insert("meta".to_owned(), JinjaValue::from_serialize(&meta_ctx));
     }
 
-    fn map_swatches_to_slots(&self) -> IndexMap<String, Vec<String>> {
+    fn map_swatches_to_roles(&self) -> IndexMap<String, Vec<String>> {
         let mut map: IndexMap<String, Vec<String>> = IndexMap::new();
 
         for swatch in &self.palette {
-            map.insert(swatch.name().to_string(), Vec::new());
+            map.insert(swatch.name.to_string(), Vec::new());
         }
 
-        for (slot_name, resolved_slot) in &self.resolved_slots {
-            if let Some(slots) = map.get_mut(&resolved_slot.swatch) {
-                slots.push(slot_name.to_string());
+        for (role_name, resolved_role) in &self.resolved_roles {
+            if let Some(roles) = map.get_mut(&resolved_role.swatch) {
+                roles.push(role_name.to_string());
             }
         }
 
@@ -314,23 +333,23 @@ impl Scheme {
     fn insert_palette(
         &self,
         context: &mut BTreeMap<String, JinjaValue>,
-        swatch_slots: &IndexMap<String, Vec<String>>,
+        swatch_roles: &IndexMap<String, Vec<String>>,
         config: &Arc<RenderConfig>,
     ) {
         let palette: Vec<JinjaValue> = self
             .palette
             .iter()
             .map(|swatch| {
-                let name = swatch.name().to_string();
+                let name = swatch.name.to_string();
 
-                let slots = swatch_slots.get(&name).cloned().unwrap_or_default();
+                let roles = swatch_roles.get(&name).cloned().unwrap_or_default();
 
                 JinjaValue::from_serialize(ColorObject::swatch(
                     swatch.hex().to_string(),
                     name,
-                    swatch.ascii().to_string(),
-                    swatch.hex().color().split_rgb(),
-                    slots,
+                    swatch.ascii.to_string(),
+                    swatch.rgb(),
+                    roles,
                     Arc::clone(config),
                 ))
             })
@@ -339,20 +358,21 @@ impl Scheme {
         context.insert("palette".to_owned(), JinjaValue::from(palette));
     }
 
-    fn rgb(&self, slot_name: &SlotName, resolved_slot: &ResolvedSlot) -> Result<(u8, u8, u8)> {
+    fn rgb(&self, role_name: &RoleName, resolved_role: &ResolvedRole) -> Result<(u8, u8, u8)> {
         self.palette
-            .get(resolved_slot.swatch.as_str())
-            .ok_or_else(|| {
-                Error::InternalBug(format!(
-                    "resolved slot `{slot_name}` references missing swatch `${}`",
-                    &resolved_slot.swatch
-                ))
+            .get(resolved_role.swatch.as_str())
+            .ok_or_else(|| crate::Error::InternalBug {
+                module: "schemes",
+                reason: format!(
+                    "resolved role `{role_name}` references missing swatch `${}`",
+                    &resolved_role.swatch
+                ),
             })
-            .map(|swatch| swatch.hex().color().split_rgb())
+            .map(Swatch::rgb)
     }
 
-    fn insert_grouped_slot(
-        slot_obj: ColorObject,
+    fn insert_grouped_role(
+        role_obj: ColorObject,
         groups: &mut BTreeMap<String, BTreeMap<String, JinjaValue>>,
         group: &str,
         key: &str,
@@ -360,25 +380,25 @@ impl Scheme {
         groups
             .entry(group.to_owned())
             .or_default()
-            .insert(key.to_owned(), JinjaValue::from_object(slot_obj));
+            .insert(key.to_owned(), JinjaValue::from_object(role_obj));
     }
 
-    fn insert_slot(
+    fn insert_role(
         &self,
         context: &mut BTreeMap<String, JinjaValue>,
         groups: &mut BTreeMap<String, BTreeMap<String, JinjaValue>>,
-        slot_name: &SlotName,
-        resolved_slot: &ResolvedSlot,
+        role_name: &RoleName,
+        resolved_role: &ResolvedRole,
         config: &Arc<RenderConfig>,
     ) -> Result<()> {
-        let parts: Vec<&str> = slot_name.as_str().split('.').collect();
+        let parts: Vec<&str> = role_name.as_str().split('.').collect();
 
-        let rgb = self.rgb(slot_name, resolved_slot)?;
+        let rgb = self.rgb(role_name, resolved_role)?;
 
-        let obj = ColorObject::slot(
-            resolved_slot.hex.clone(),
-            resolved_slot.swatch.clone(),
-            resolved_slot.ascii.clone(),
+        let obj = ColorObject::role(
+            resolved_role.hex.clone(),
+            resolved_role.swatch.clone(),
+            resolved_role.ascii.clone(),
             rgb,
             Arc::clone(config),
         );
@@ -388,12 +408,13 @@ impl Scheme {
                 context.insert((*key).to_owned(), JinjaValue::from_object(obj));
             }
             [group, key] => {
-                Self::insert_grouped_slot(obj, groups, group, key);
+                Self::insert_grouped_role(obj, groups, group, key);
             }
             _ => {
-                return Err(Error::InternalBug(format!(
-                    "slot {slot_name} not formatted like `[group.]slot`"
-                )));
+                return Err(crate::Error::InternalBug {
+                    module: "schemes",
+                    reason: format!("role {role_name} not formatted like `[group.]role`"),
+                });
             }
         }
 
@@ -404,35 +425,39 @@ impl Scheme {
         &self,
         context: &mut BTreeMap<String, JinjaValue>,
         swatch_name: &str,
-        swatch_slots: &IndexMap<String, Vec<String>>,
+        swatch_roles: &IndexMap<String, Vec<String>>,
         config: &Arc<RenderConfig>,
     ) -> Result<()> {
-        let swatch = self.palette.get(swatch_name).ok_or_else(|| {
-            Error::InternalBug(format!(
-                "current swatch `{swatch_name}` not in palette, but we should only be receiving \
-                 valid swatch names"
-            ))
-        })?;
+        let swatch = self
+            .palette
+            .get(swatch_name)
+            .ok_or_else(|| crate::Error::InternalBug {
+                module: "schemes",
+                reason: format!(
+                    "current swatch `{swatch_name}` not in palette, but we should only be \
+                     receiving valid swatch names"
+                ),
+            })?;
 
-        let slots = swatch_slots.get(swatch_name).cloned().unwrap_or_default();
+        let roles = swatch_roles.get(swatch_name).cloned().unwrap_or_default();
 
         let obj = ColorObject::swatch(
             swatch.hex().to_string(),
-            swatch.name().to_string(),
-            swatch.ascii().to_string(),
-            swatch.hex().color().split_rgb(),
-            slots,
+            swatch.name.to_string(),
+            swatch.ascii.to_string(),
+            swatch.rgb(),
+            roles,
             Arc::clone(config),
         );
 
-        context.insert("SWATCH".to_owned(), JinjaValue::from_object(obj));
+        context.insert("swatch".to_owned(), JinjaValue::from_object(obj));
 
         Ok(())
     }
 
-    fn insert_set_test_slots(&self, context: &mut BTreeMap<String, JinjaValue>) {
-        let set_slots: Vec<String> = self.slots.keys().map(ToString::to_string).collect();
-        context.insert("_set".to_owned(), JinjaValue::from(set_slots));
+    fn insert_set_test_roles(&self, context: &mut BTreeMap<String, JinjaValue>) {
+        let set_roles: Vec<String> = self.roles.keys().map(ToString::to_string).collect();
+        context.insert("_set".to_owned(), JinjaValue::from(set_roles));
     }
 
     fn insert_special(context: &mut BTreeMap<String, JinjaValue>, special: &Special) {
@@ -464,13 +489,13 @@ impl Scheme {
 
         let config = RenderConfig::new(color_format, text_format);
 
-        let swatch_slots = Self::map_swatches_to_slots(self);
+        let swatch_roles = Self::map_swatches_to_roles(self);
 
         self.insert_meta(&mut ctx, &config);
-        self.insert_palette(&mut ctx, &swatch_slots, &config);
+        self.insert_palette(&mut ctx, &swatch_roles, &config);
 
-        for (slot_name, resolved_slot) in &self.resolved_slots {
-            self.insert_slot(&mut ctx, &mut groups, slot_name, resolved_slot, &config)?;
+        for (role_name, resolved_role) in &self.resolved_roles {
+            self.insert_role(&mut ctx, &mut groups, role_name, resolved_role, &config)?;
         }
 
         for (group_name, group_map) in groups {
@@ -478,35 +503,71 @@ impl Scheme {
         }
 
         if let Some(name) = current_swatch {
-            self.insert_current_swatch(&mut ctx, name, &swatch_slots, &config)?;
+            self.insert_current_swatch(&mut ctx, name, &swatch_roles, &config)?;
         }
 
         Self::insert_special(&mut ctx, special);
-        self.insert_set_test_slots(&mut ctx);
+        self.insert_set_test_roles(&mut ctx);
 
         Ok(ctx)
     }
 }
 
 pub fn load(name: &str, path: &Path) -> Result<Scheme> {
-    let path = path.to_string_lossy().to_string();
+    let path_str = path.to_string_lossy().to_string();
 
-    let content = fs::read_to_string(&path).map_err(|src| Error::ReadingFile {
-        path: path.clone(),
+    let content = fs::read_to_string(&path_str).map_err(|src| Error::ReadingFile {
+        path: path_str.clone(),
         src,
     })?;
 
     let root: Table = toml::from_str(&content).map_err(|src| Error::ParsingRaw {
-        path: path.clone(),
-        src,
+        path: path_str.clone(),
+        src: Box::new(src),
     })?;
+
+    let scheme: Option<SchemeName> = root
+        .get("scheme")
+        .map(|v| {
+            let s = v.as_str().ok_or_else(|| Error::Deserializing {
+                section: "scheme".to_owned(),
+                path: path_str.clone(),
+                src: Box::new(<TomlDeError as SerdeDeError>::custom(
+                    "`scheme` must be a string",
+                )),
+            })?;
+            SchemeName::parse(s).map_err(|e| Error::Deserializing {
+                section: "scheme".to_owned(),
+                path: path_str.clone(),
+                src: Box::new(<TomlDeError as SerdeDeError>::custom(format!("{e}"))),
+            })
+        })
+        .transpose()?;
+
+    let scheme_ascii: Option<SchemeAsciiName> = root
+        .get("scheme_ascii")
+        .map(|v| {
+            let s = v.as_str().ok_or_else(|| Error::Deserializing {
+                section: "scheme_ascii".to_owned(),
+                path: path_str.clone(),
+                src: Box::new(<TomlDeError as SerdeDeError>::custom(
+                    "`scheme_ascii` must be a string",
+                )),
+            })?;
+            SchemeAsciiName::parse(s).map_err(|e| Error::Deserializing {
+                section: "scheme_ascii".to_owned(),
+                path: path_str.clone(),
+                src: Box::new(<TomlDeError as SerdeDeError>::custom(format!("{e}"))),
+            })
+        })
+        .transpose()?;
 
     let meta: Meta = root
         .get("meta")
         .map(|v| {
             v.clone().try_into().map_err(|src| Error::Deserializing {
                 section: "meta".to_owned(),
-                path: path.clone(),
+                path: path_str.clone(),
                 src: Box::new(src),
             })
         })
@@ -522,24 +583,26 @@ pub fn load(name: &str, path: &Path) -> Result<Scheme> {
 
     let palette_val = root.get("palette").ok_or_else(|| Error::Deserializing {
         section: "palette".to_owned(),
-        path: path.clone(),
+        path: path_str.clone(),
         src: Box::new(<TomlDeError as SerdeDeError>::missing_field("palette")),
     })?;
 
-    let palette = RawScheme::parse_palette(palette_val, &path)?;
+    let palette = RawScheme::parse_palette(palette_val, &path_str)?;
 
-    let slots_val = root.get("slots").ok_or_else(|| Error::Deserializing {
-        section: "slots".to_owned(),
-        path: path.clone(),
-        src: Box::new(<TomlDeError as SerdeDeError>::missing_field("slots")),
+    let roles_val = root.get("roles").ok_or_else(|| Error::Deserializing {
+        section: "roles".to_owned(),
+        path: path_str.clone(),
+        src: Box::new(<TomlDeError as SerdeDeError>::missing_field("roles")),
     })?;
 
-    let slots = RawScheme::parse_slots(slots_val, &path)?;
+    let roles = RawScheme::parse_roles(roles_val, &path_str)?;
 
     let raw = RawScheme {
+        scheme,
+        scheme_ascii,
         meta,
         palette,
-        slots,
+        roles,
     };
 
     raw.into_scheme(name)
@@ -554,11 +617,12 @@ pub fn load_all(dir: &str) -> Result<IndexMap<String, Scheme>> {
             let name = path
                 .file_stem()
                 .and_then(|stem| stem.to_str())
-                .ok_or_else(|| {
-                    Error::InternalBug(format!(
+                .ok_or_else(|| crate::Error::InternalBug {
+                    module: "schemes",
+                    reason: format!(
                         "attempted to load scheme with corrupted path `{}`",
                         path.display(),
-                    ))
+                    ),
                 })?;
             let scheme = load(name, path)?;
             schemes.insert(name.to_owned(), scheme);
@@ -591,37 +655,37 @@ mod tests {
         load(name, temp.path())
     }
 
-    fn assert_slot_hex_equals(context: &BTreeMap<String, JinjaValue>, slot: &str, expected: &str) {
+    fn assert_role_hex_equals(context: &BTreeMap<String, JinjaValue>, role: &str, expected: &str) {
         let obj = context
-            .get(slot)
-            .unwrap_or_else(|| panic!("slot `{slot}` not found in context`"));
+            .get(role)
+            .unwrap_or_else(|| panic!("role `{role}` not found in context`"));
         let actual = obj
             .get_attr("hex")
-            .unwrap_or_else(|_| panic!("slot `{slot}` missing `hex` field"));
+            .unwrap_or_else(|_| panic!("role `{role}` missing `hex` field"));
 
-        assert_eq!(actual, expected.into(), "slot `{slot}` has wrong hex value");
+        assert_eq!(actual, expected.into(), "role `{role}` has wrong hex value");
     }
 
-    fn assert_nested_slot_hex_equals(
+    fn assert_nested_role_hex_equals(
         context: &BTreeMap<String, JinjaValue>,
         group: &str,
-        slot: &str,
+        role: &str,
         expected: &str,
     ) {
         let group_obj = context
             .get(group)
             .unwrap_or_else(|| panic!("group `{group}` not found in context"));
-        let slot_obj = group_obj
-            .get_attr(slot)
-            .unwrap_or_else(|_| panic!("slot `{group}.{slot}` not found in context"));
-        let actual = slot_obj
+        let role_obj = group_obj
+            .get_attr(role)
+            .unwrap_or_else(|_| panic!("role `{group}.{role}` not found in context"));
+        let actual = role_obj
             .get_attr("hex")
-            .unwrap_or_else(|_| panic!("slot `{group}.{slot}` missing `hex` field"));
+            .unwrap_or_else(|_| panic!("role `{group}.{role}` missing `hex` field"));
 
         assert_eq!(
             actual,
             expected.into(),
-            "slot `{group}.{slot}` has wrong hex value"
+            "role `{group}.{role}` has wrong hex value"
         );
     }
 
@@ -637,7 +701,7 @@ mod tests {
             cyan = "#00ffff"
             white = "#fff"
 
-            [slots.ansi]
+            [roles.ansi]
             black = "$black"
             red = "$red"
             green = "$green"

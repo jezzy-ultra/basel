@@ -6,10 +6,7 @@ use git2::Repository;
 use indexmap::IndexMap;
 use log::warn;
 
-#[expect(
-    unnameable_types,
-    reason = "internal error intentionally exposed through public `crate::Error`"
-)]
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("failed to parse git url `{url}`: {src}")]
@@ -171,7 +168,7 @@ pub(crate) fn extract_base_url(full_url: &str) -> Option<String> {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct GitCache(IndexMap<PathBuf, Option<GitInfo>>);
+pub struct GitCache(IndexMap<PathBuf, Option<GitInfo>>);
 
 impl GitCache {
     #[must_use]

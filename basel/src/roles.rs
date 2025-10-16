@@ -6,10 +6,10 @@ use owo_colors::OwoColorize as _;
 use owo_colors::Stream::Stdout;
 use serde::Serialize;
 
-use crate::SLOT_VARIANT_SEPARATOR;
-use crate::swatches::SwatchDisplayName;
+use crate::ROLE_VARIANT_SEPARATOR;
+use crate::swatches::SwatchName;
 
-const SLOTS: &[&str] = &[
+const ROLES: &[&str] = &[
     "bg",
     "bg_alt",
     "fg",
@@ -134,28 +134,29 @@ const SLOTS: &[&str] = &[
     "ansi.white_bright",
 ];
 
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("undefined slot `{0}`")]
-    UndefinedSlot(String),
-    #[error("circular slot references: {}", format_circular_chain(.0))]
+    #[error("undefined role `{0}`")]
+    UndefinedRole(String),
+    #[error("circular role references: {}", format_circular_chain(.0))]
     CircularReference(Vec<String>),
-    #[error("required slot `{0}` missing")]
+    #[error("required role `{0}` missing")]
     MissingRequired(String),
 }
 
-fn format_circular_chain(slots: &[String]) -> String {
-    slots
+fn format_circular_chain(roles: &[String]) -> String {
+    roles
         .iter()
         .enumerate()
-        .map(|(i, slot)| {
-            if i == slots.len() - 1 {
+        .map(|(i, role)| {
+            if i == roles.len() - 1 {
                 format!(
                     "`{}`",
-                    slot.if_supports_color(Stdout, |text| text.red().underline().to_string())
+                    role.if_supports_color(Stdout, |text| text.red().underline().to_string())
                 )
             } else {
-                format!("`{slot}`")
+                format!("`{role}`")
             }
         })
         .collect::<Vec<_>>()
@@ -165,25 +166,25 @@ fn format_circular_chain(slots: &[String]) -> String {
 pub(crate) type Result<T> = StdResult<T, Error>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-pub struct SlotName(&'static str);
+pub struct RoleName(&'static str);
 
-impl SlotName {
-    #[expect(clippy::unreachable, reason = "guaranteed by slot design")]
+impl RoleName {
+    #[expect(clippy::unreachable, reason = "guaranteed by role design")]
     #[must_use]
-    pub fn classify(&self) -> SlotKind {
+    pub fn classify(&self) -> RoleKind {
         if is_base(self.as_str()) {
-            SlotKind::Base(BaseSlot(*self))
+            RoleKind::Base(BaseRole(*self))
         } else {
             let base_str = extract_base(self.as_str());
-            let base_slot = SLOTS
+            let base_role = ROLES
                 .iter()
-                .find(|&&slot| slot == base_str)
+                .find(|&&role| role == base_str)
                 .copied()
-                .map_or_else(|| unreachable!("optional slots always have a base"), Self);
+                .map_or_else(|| unreachable!("optional roles always have a base"), Self);
 
-            SlotKind::Optional(OptionalSlot {
+            RoleKind::Optional(OptionalRole {
                 name: *self,
-                base: BaseSlot(base_slot),
+                base: BaseRole(base_role),
             })
         }
     }
@@ -198,95 +199,97 @@ impl SlotName {
     }
 }
 
-impl FromStr for SlotName {
+impl FromStr for RoleName {
     type Err = Error;
 
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
-        SLOTS
+        ROLES
             .iter()
-            .find(|&&slot| slot == s)
+            .find(|&&role| role == s)
             .copied()
             .map(Self)
-            .ok_or_else(|| Error::UndefinedSlot(s.to_owned()))
+            .ok_or_else(|| Error::UndefinedRole(s.to_owned()))
     }
 }
 
-impl Display for SlotName {
+impl Display for RoleName {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.0)
     }
 }
 
-pub(crate) fn iter() -> impl Iterator<Item = SlotName> {
-    SLOTS.iter().copied().map(SlotName)
+pub(crate) fn iter() -> impl Iterator<Item = RoleName> {
+    ROLES.iter().copied().map(RoleName)
 }
 
-fn extract_base(slot: &str) -> &str {
-    if let Some((base, _)) = slot.rsplit_once(SLOT_VARIANT_SEPARATOR) {
+fn extract_base(role: &str) -> &str {
+    if let Some((base, _)) = role.rsplit_once(ROLE_VARIANT_SEPARATOR) {
         return base;
     }
 
-    slot
+    role
 }
 
-fn is_base(slot: &str) -> bool {
-    extract_base(slot) == slot
+fn is_base(role: &str) -> bool {
+    extract_base(role) == role
 }
 
-pub(crate) fn base() -> impl Iterator<Item = SlotName> {
-    SLOTS.iter().copied().filter(|&s| is_base(s)).map(SlotName)
+pub(crate) fn base() -> impl Iterator<Item = RoleName> {
+    ROLES.iter().copied().filter(|&s| is_base(s)).map(RoleName)
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BaseSlot(SlotName);
+pub struct BaseRole(RoleName);
 
-impl BaseSlot {
+impl BaseRole {
     #[must_use]
-    pub const fn name(&self) -> &SlotName {
+    pub const fn name(&self) -> &RoleName {
         &self.0
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct OptionalSlot {
-    name: SlotName,
-    base: BaseSlot,
+pub struct OptionalRole {
+    name: RoleName,
+    base: BaseRole,
 }
 
-impl OptionalSlot {
+impl OptionalRole {
     #[must_use]
-    pub const fn name(&self) -> &SlotName {
+    pub const fn name(&self) -> &RoleName {
         &self.name
     }
 
     #[must_use]
-    pub const fn base(&self) -> &SlotName {
+    pub const fn base(&self) -> &RoleName {
         self.base.name()
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
-pub enum SlotKind {
-    Base(BaseSlot),
-    Optional(OptionalSlot),
+pub enum RoleKind {
+    Base(BaseRole),
+    Optional(OptionalRole),
 }
 
+#[non_exhaustive]
 #[derive(Debug, Serialize)]
-pub enum SlotValue {
-    Swatch(SwatchDisplayName),
-    Slot(SlotName),
+pub enum RoleValue {
+    Swatch(SwatchName),
+    Role(RoleName),
 }
 
-impl SlotValue {
+impl RoleValue {
     pub fn parse(val: &str) -> Result<Self> {
         if let Some(swatch_name) = val.strip_prefix('$') {
-            let display_name = SwatchDisplayName::parse(swatch_name).map_err(|_err| {
-                Error::UndefinedSlot(format!("invalid swatch reference: `${swatch_name}`"))
+            let display_name = SwatchName::parse(swatch_name).map_err(|_err| {
+                Error::UndefinedRole(format!("invalid swatch reference: `${swatch_name}`"))
             })?;
             Ok(Self::Swatch(display_name))
         } else {
-            let slot_name = val.parse()?;
-            Ok(Self::Slot(slot_name))
+            let role_name = val.parse()?;
+            Ok(Self::Role(role_name))
         }
     }
 }
@@ -297,7 +300,7 @@ mod tests {
 
     use super::*;
 
-    fn create_invalid_slot_names() -> Vec<&'static str> {
+    fn create_invalid_role_names() -> Vec<&'static str> {
         vec![
             "selection",
             "42",
@@ -308,12 +311,12 @@ mod tests {
     }
 
     #[test]
-    fn slots_are_valid() {
-        let slots = iter()
+    fn roles_are_valid() {
+        let roles = iter()
             .map(|s| s.as_str().parse())
-            .collect::<Result<Vec<SlotName>>>()
-            .unwrap_or_else(|e| panic!("invalid `SLOT` name {e}"));
+            .collect::<Result<Vec<RoleName>>>()
+            .unwrap_or_else(|e| panic!("invalid `ROLE` name {e}"));
     }
 
-    fn slot_name_errors_on_invalid_name() {}
+    fn role_name_errors_on_invalid_name() {}
 }

@@ -1,0 +1,10 @@
+[dirs]
+schemes = "schemes"
+templates = "templates"
+render = "render"
+
+[upstream]
+repo_path = "~/src/cutiepro"
+pattern = "{base}/blob/{branch}/{file}"
+branch = "main"
+strip_directives = [["#:tombi", "lint.disabled", "=", "true"]]

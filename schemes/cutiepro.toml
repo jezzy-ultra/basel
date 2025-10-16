@@ -41,7 +41,7 @@ olive = "#b1a585"
 ash = "#b8b4ae"
 chalk = "#d5d0c9"
 
-[slots]
+[roles]
 bg = "$blackboard"
 # bg_alt
 fg = "$chalk"
@@ -70,12 +70,12 @@ warning = "$nectar"
 info = "$lilac"
 hint = "fg"
 
-[slots.debug]
+[roles.debug]
 active = "$princess"
 breakpoint = "$coral"
 frameline = "$date"
 
-[slots.mode]
+[roles.mode]
 normal = "$cherry_blossom"
 normal_2nd = "$opium"
 insert = "$sour_apple"
@@ -83,7 +83,7 @@ insert_2nd = "$sage"
 select = "$sky"
 select_2nd = "$cloud"
 
-[slots.syntax]
+[roles.syntax]
 variable = "$cherry_blossom"
 variable_builtin = "$princess"
 variable_parameter = "$peach"
@@ -133,14 +133,14 @@ special_character = "syntax.special_string"
 special_string = "$blueberry"
 special_punctuation = "$strawberry"
 
-[slots.diff]
+[roles.diff]
 plus = "$sour_apple"
 minus = "$strawberry"
 delta = "$sky"
 delta_moved = "$peacock"
 delta_conflict = "$sand"
 
-[slots.markup]
+[roles.markup]
 heading = "$cherry_blossom"
 heading_2nd = "$strawberry"
 heading_3rd = "$sand"
@@ -158,7 +158,7 @@ strikethrough = "$ash"
 quote = "$peach"
 raw = "$sour_apple"
 
-[slots.ansi]
+[roles.ansi]
 black = "$raven"
 black_bright = "$soil"
 red = "$strawberry"

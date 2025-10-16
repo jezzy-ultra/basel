@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::{Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 use std::result::Result as StdResult;
 use std::str::FromStr;
@@ -12,34 +12,14 @@ use minijinja::value::{Enumerator, Object as JinjaObject};
 use serde::de::Error as SerdeDeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use toml::Value as TomlValue;
-use unicode_normalization::UnicodeNormalization as _;
 
-use crate::{ColorFormat, TextFormat};
+use crate::{ColorFormat, Result, TextFormat, name_type};
 
-const MAX_NAME_LENGTH: usize = 255;
-
-const WINDOWS_RESERVED: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-];
-
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("hex parsing error: {0}")]
     ParsingHex(#[from] ParseHexColorError),
-    #[error("invalid swatch name `{name}`: {reason}")]
-    InvalidName { name: String, reason: String },
-    #[error("invalid swatch ascii name `{name}`: {reason}")]
-    InvalidAsciiName { name: String, reason: String },
-    // TODO: offer suggestions on how to fix
-    #[error(
-        "invalid generated ascii fallback `{ascii_name}` for swatch `{display_name}`: {reason}"
-    )]
-    GeneratingAsciiName {
-        display_name: String,
-        ascii_name: String,
-        reason: String,
-    },
     #[error(
         "{} fall back to the same ascii name `{ascii_name}`",
         format_names(display_names)
@@ -61,8 +41,6 @@ fn format_names(names: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
-
-pub(crate) type Result<T> = StdResult<T, Error>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SwatchColor(HexDisplay);
@@ -91,7 +69,7 @@ impl From<HexDisplay> for SwatchColor {
 }
 
 impl FromStr for SwatchColor {
-    type Err = Error;
+    type Err = crate::Error;
 
     fn from_str(s: &str) -> Result<Self> {
         Self::try_from(s)
@@ -99,10 +77,13 @@ impl FromStr for SwatchColor {
 }
 
 impl TryFrom<&str> for SwatchColor {
-    type Error = Error;
+    type Error = crate::Error;
 
     fn try_from(s: &str) -> Result<Self> {
-        let color = HexColor::parse(s)?;
+        let color = HexColor::parse(s)
+            .map_err(Error::from)
+            .map_err(crate::Error::from)?;
+
         Ok(Self(HexDisplay::new(color).with_case(Case::Lower)))
     }
 }
@@ -126,225 +107,19 @@ impl<'de> Deserialize<'de> for SwatchColor {
     }
 }
 
-fn is_reserved(name: &str) -> bool {
-    let base = name.split('.').next().unwrap_or(name);
-    let upper = base.to_uppercase();
+name_type!(SwatchName, SwatchAsciiName, "swatch");
 
-    WINDOWS_RESERVED.iter().any(|&reserved| reserved == upper)
-}
-
-fn is_safe(c: char) -> bool {
-    c.is_alphanumeric() || c == '-' || c == '_'
-}
-
-fn normalize_and_validate(name: &str) -> Result<String> {
-    let normalized = name.nfc().collect::<String>();
-
-    if normalized.is_empty() {
-        return Err(Error::InvalidName {
-            name: name.to_owned(),
-            reason: "empty".to_owned(),
-        });
-    }
-
-    if !normalized.chars().all(is_safe) {
-        return Err(Error::InvalidName {
-            name: name.to_owned(),
-            reason: "contains character that's not a unicode letter, number, `-` or `_`".to_owned(),
-        });
-    }
-
-    if normalized.len() > MAX_NAME_LENGTH {
-        return Err(Error::InvalidName {
-            name: name.to_owned(),
-            reason: format!(
-                "too long ({} characters; max is {MAX_NAME_LENGTH})",
-                normalized.len()
-            ),
-        });
-    }
-
-    if is_reserved(&normalized) {
-        return Err(Error::InvalidName {
-            name: name.to_owned(),
-            reason: "uses reserved windows name".to_owned(),
-        });
-    }
-
-    Ok(normalized)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SwatchDisplayName(String);
-
-impl SwatchDisplayName {
-    pub fn parse(s: &str) -> Result<Self> {
-        s.parse()
-    }
-
-    #[expect(
-        clippy::assigning_clones,
-        reason = "can't use `clone_into`: `trim_matches` borrows `ascii_name` immutably"
-    )]
-    pub fn to_ascii(&self) -> Result<SwatchAsciiName> {
-        let mut ascii_name = deunicode::deunicode(&self.0);
-
-        let mut last_was_sep = false;
-        ascii_name = ascii_name
-            .chars()
-            .filter_map(|c| match c {
-                c if c.is_ascii_alphanumeric() => {
-                    last_was_sep = false;
-                    Some(c)
-                }
-                '-' | '_' => {
-                    if last_was_sep {
-                        None
-                    } else {
-                        last_was_sep = true;
-                        Some(c)
-                    }
-                }
-                ' ' | '/' | ':' | ',' | ';' | '|' | '+' => {
-                    if last_was_sep {
-                        None
-                    } else {
-                        last_was_sep = true;
-                        Some('-')
-                    }
-                }
-                _ => {
-                    if last_was_sep {
-                        None
-                    } else {
-                        last_was_sep = true;
-                        Some('_')
-                    }
-                }
-            })
-            .collect::<String>();
-
-        ascii_name = ascii_name.trim_matches(|c| c == '-' || c == '_').to_owned();
-
-        if ascii_name.is_empty() {
-            return Err(Error::GeneratingAsciiName {
-                display_name: self.0.clone(),
-                ascii_name,
-                reason: "transliteration produced no valid filename characters".to_owned(),
-            });
-        }
-
-        validate_auto_ascii(&self.0, &ascii_name)?;
-
-        Ok(SwatchAsciiName(ascii_name))
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl FromStr for SwatchDisplayName {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        let normalized = normalize_and_validate(s)?;
-
-        Ok(Self(normalized))
-    }
-}
-
-impl Display for SwatchDisplayName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", &self.0)
-    }
-}
-
-fn validate_set_ascii(name: &str) -> Result<()> {
-    if !name.is_ascii() {
-        // TODO: which character(s)?
-        return Err(Error::InvalidAsciiName {
-            name: name.to_owned(),
-            reason: "contains non-ascii character(s)".to_owned(),
-        });
-    }
-
-    Ok(())
-}
-
-fn validate_auto_ascii(display_name: &str, ascii_name: &str) -> Result<()> {
-    if ascii_name.len() > MAX_NAME_LENGTH {
-        return Err(Error::GeneratingAsciiName {
-            display_name: display_name.to_owned(),
-            ascii_name: ascii_name.to_owned(),
-            reason: format!(
-                "too long ({} characters; max is {MAX_NAME_LENGTH})",
-                ascii_name.len()
-            ),
-        });
-    }
-
-    if is_reserved(ascii_name) {
-        return Err(Error::GeneratingAsciiName {
-            display_name: display_name.to_owned(),
-            ascii_name: ascii_name.to_owned(),
-            reason: "uses reserved windows name".to_owned(),
-        });
-    }
-
-    if ascii_name.ends_with('.') {
-        return Err(Error::GeneratingAsciiName {
-            display_name: display_name.to_owned(),
-            ascii_name: ascii_name.to_owned(),
-            reason: "ends with `.`".to_owned(),
-        });
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SwatchAsciiName(String);
-
-impl SwatchAsciiName {
-    pub fn parse(s: &str) -> Result<Self> {
-        s.parse()
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl FromStr for SwatchAsciiName {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        let normalized = normalize_and_validate(s)?;
-        validate_set_ascii(&normalized)?;
-
-        Ok(Self(normalized))
-    }
-}
-
-impl Display for SwatchAsciiName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", &self.0)
-    }
-}
-
+#[non_exhaustive]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Swatch {
-    name: SwatchDisplayName,
-    color: SwatchColor,
-    ascii: SwatchAsciiName,
+    pub name: SwatchName,
+    pub color: SwatchColor,
+    pub ascii: SwatchAsciiName,
 }
 
 impl Swatch {
     pub fn parse(display_key: &str, val: &TomlValue) -> Result<Self> {
-        let display_name = SwatchDisplayName::parse(display_key)?;
+        let display_name = SwatchName::parse(display_key)?;
 
         if let Some(hex_str) = val.as_str() {
             let hex = SwatchColor::try_from(hex_str)?;
@@ -379,10 +154,10 @@ impl Swatch {
                 }
             })
         } else {
-            Err(Error::InvalidTomlStructure {
+            Err(crate::Error::Swatch(Error::InvalidTomlStructure {
                 name: display_key.to_owned(),
                 reason: "must be hex string or `{ hex, ascii }` table".to_owned(),
-            })
+            }))
         }
     }
 
@@ -392,13 +167,8 @@ impl Swatch {
     }
 
     #[must_use]
-    pub const fn name(&self) -> &SwatchDisplayName {
-        &self.name
-    }
-
-    #[must_use]
-    pub const fn ascii(&self) -> &SwatchAsciiName {
-        &self.ascii
+    pub const fn rgb(&self) -> (u8, u8, u8) {
+        self.color.0.color().split_rgb()
     }
 }
 
@@ -427,7 +197,7 @@ pub(crate) fn check_ascii_collisions(palette: &IndexSet<Swatch>) -> Result<()> {
 
     for swatch in palette {
         ascii_to_display
-            .entry(swatch.ascii().to_string())
+            .entry(swatch.ascii.to_string())
             .or_default()
             .push(swatch.name.to_string());
     }
@@ -437,7 +207,8 @@ pub(crate) fn check_ascii_collisions(palette: &IndexSet<Swatch>) -> Result<()> {
             return Err(Error::CollidingAsciiNames {
                 ascii_name,
                 display_names,
-            });
+            }
+            .into());
         }
     }
 
@@ -448,18 +219,19 @@ pub(crate) fn check_case_collisions(palette: &IndexSet<Swatch>) -> Result<()> {
     let mut lowercase_to_original: IndexMap<String, Vec<String>> = IndexMap::new();
 
     for swatch in palette {
-        let lowercase = swatch.name().as_str().to_lowercase();
+        let lowercase = swatch.name.as_str().to_lowercase();
         lowercase_to_original
             .entry(lowercase)
             .or_default()
-            .push(swatch.name().to_string());
+            .push(swatch.name.to_string());
     }
 
     for (_lowercase, original_names) in lowercase_to_original {
         if original_names.len() > 1 {
             return Err(Error::CollidingNameCases {
                 names: original_names,
-            });
+            }
+            .into());
         }
     }
 
@@ -481,7 +253,7 @@ impl RenderConfig {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub(crate) enum ColorObject {
     Swatch {
@@ -489,11 +261,11 @@ pub(crate) enum ColorObject {
         name: String,
         ascii: String,
         rgb: (u8, u8, u8),
-        slots: Vec<String>,
+        roles: Vec<String>,
         #[serde(skip)]
         config: Arc<RenderConfig>,
     },
-    Slot {
+    Role {
         hex: String,
         swatch: String,
         swatch_ascii: String,
@@ -509,7 +281,7 @@ impl ColorObject {
         name: String,
         ascii: String,
         rgb: (u8, u8, u8),
-        slots: Vec<String>,
+        roles: Vec<String>,
         config: Arc<RenderConfig>,
     ) -> Self {
         Self::Swatch {
@@ -517,19 +289,19 @@ impl ColorObject {
             name,
             ascii,
             rgb,
-            slots,
+            roles,
             config,
         }
     }
 
-    pub(crate) const fn slot(
+    pub(crate) const fn role(
         hex: String,
         swatch: String,
         swatch_ascii: String,
         rgb: (u8, u8, u8),
         config: Arc<RenderConfig>,
     ) -> Self {
-        Self::Slot {
+        Self::Role {
             hex,
             swatch,
             swatch_ascii,
@@ -543,25 +315,23 @@ impl JinjaObject for ColorObject {
     fn render(self: &Arc<Self>, f: &mut Formatter<'_>) -> FmtResult {
         match self.as_ref() {
             Self::Swatch {
-                hex, name, config, ..
+                hex,
+                name,
+                ascii,
+                config,
+                ..
             } => {
                 let text = match config.color_format {
                     ColorFormat::Hex => hex,
                     ColorFormat::Name => match config.text_format {
                         TextFormat::Unicode => name,
-                        TextFormat::Ascii => {
-                            if let Self::Swatch { ascii, .. } = self.as_ref() {
-                                ascii
-                            } else {
-                                unreachable!() // ???
-                            }
-                        }
+                        TextFormat::Ascii => ascii,
                     },
                 };
 
                 write!(f, "{text}")
             }
-            Self::Slot {
+            Self::Role {
                 hex,
                 swatch,
                 swatch_ascii,
@@ -589,7 +359,7 @@ impl JinjaObject for ColorObject {
                 name,
                 ascii,
                 rgb,
-                slots,
+                roles,
                 ..
             } => {
                 let (r, g, b) = *rgb;
@@ -598,7 +368,7 @@ impl JinjaObject for ColorObject {
                     "hex" => Some(JinjaValue::from(hex)),
                     "name" => Some(JinjaValue::from(name)),
                     "ascii" => Some(JinjaValue::from(ascii)),
-                    "slots" => Some(JinjaValue::from_serialize(slots)),
+                    "roles" => Some(JinjaValue::from_serialize(roles)),
                     "r" => Some(JinjaValue::from(r)),
                     "g" => Some(JinjaValue::from(g)),
                     "b" => Some(JinjaValue::from(b)),
@@ -608,7 +378,7 @@ impl JinjaObject for ColorObject {
                     _ => None,
                 }
             }
-            Self::Slot {
+            Self::Role {
                 hex,
                 swatch,
                 swatch_ascii,
@@ -619,10 +389,8 @@ impl JinjaObject for ColorObject {
 
                 match key_str {
                     "hex" => Some(JinjaValue::from(hex)),
-                    "swatch" => Some(JinjaValue::from(swatch)),
-                    "swatch_ascii" => Some(JinjaValue::from(swatch_ascii)),
-                    "name" => Some(JinjaValue::from(swatch)),
-                    "ascii" => Some(JinjaValue::from(swatch_ascii)),
+                    "swatch" | "name" => Some(JinjaValue::from(swatch)),
+                    "swatch_ascii" | "ascii" => Some(JinjaValue::from(swatch_ascii)),
                     "r" => Some(JinjaValue::from(r)),
                     "g" => Some(JinjaValue::from(g)),
                     "b" => Some(JinjaValue::from(b)),
@@ -638,9 +406,9 @@ impl JinjaObject for ColorObject {
     fn enumerate(self: &Arc<Self>) -> Enumerator {
         match self.as_ref() {
             Self::Swatch { .. } => Enumerator::Str(&[
-                "hex", "name", "ascii", "slots", "r", "g", "b", "rf", "gf", "bf",
+                "hex", "name", "ascii", "roles", "r", "g", "b", "rf", "gf", "bf",
             ]),
-            Self::Slot { .. } => Enumerator::Str(&[
+            Self::Role { .. } => Enumerator::Str(&[
                 "hex",
                 "swatch",
                 "swatch_ascii",
