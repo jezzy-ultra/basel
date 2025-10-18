@@ -11,7 +11,7 @@ categories.workspace = true
 
 [dependencies]
 dioxus.workspace = true
-dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1" }
+dioxus-primitives.workspace = true
 
 [features]
 default = ["web"]
