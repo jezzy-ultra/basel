@@ -2,18 +2,17 @@
 - [ ] more comprehensive `dry_run` behavior
 - [ ] make jinja macro to generate palette table markdown (with a column for the
       roles assigned to each swatch)
+- [ ] check for scheme name collisions
 - [ ] put extra settings back into the kitty template?
 - [ ] add json schema for schemes?
 - [ ] streamline macro invocations?
-- [ ] fix my custom Helix move lines bindings not working right with multi-line
-      selections
 
 # errors
 
 - [ ] fix unknown variables in templates returning `InternalBug` (might already
       be fixed?)
   - [ ] have it show the unknown variable
-- [ ] investigate whether it's a good idea that both `Error` and `RenderError`
+- [x] investigate whether it's a good idea that both `Error` and `RenderError`
       convert from `SchemeError` and `TemplateError`
 - [ ] collect non-fatal errors and then return instead of exiting immediately
   - [ ] group errors together to lessen unnecessary verbosity
@@ -50,6 +49,8 @@
 # personal
 
 - [ ] show current directory and running command in fish title
+- [ ] fix my custom Helix move lines bindings not working right with multi-line
+      selections
 
 ## cutiepro
 
