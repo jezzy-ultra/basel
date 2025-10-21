@@ -8,11 +8,11 @@ use log::warn;
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(crate) enum Error {
     #[error("failed to parse git url `{url}`: {src}")]
-    ParsingUrl { url: String, src: GitUrlParseError },
+    Parsing { url: String, src: GitUrlParseError },
     #[error("failed to get the host in git url `{0}`")]
-    UnsupportedUrl(String),
+    Unsupported(String),
 }
 
 pub(crate) type Result<T> = StdResult<T, Error>;
@@ -46,14 +46,14 @@ impl GitInfo {
     }
 
     fn normalize(url: &str) -> Result<(String, String)> {
-        let parsed = GitUrl::parse(url).map_err(|src| Error::ParsingUrl {
+        let parsed = GitUrl::parse(url).map_err(|src| Error::Parsing {
             url: url.to_owned(),
             src,
         })?;
 
         let host = parsed
             .host()
-            .ok_or_else(|| Error::UnsupportedUrl(url.to_owned()))?;
+            .ok_or_else(|| Error::Unsupported(url.to_owned()))?;
 
         let path = parsed
             .path()
@@ -168,7 +168,7 @@ pub(crate) fn extract_base_url(full_url: &str) -> Option<String> {
 }
 
 #[derive(Debug, Default)]
-pub struct GitCache(IndexMap<PathBuf, Option<GitInfo>>);
+pub(crate) struct GitCache(IndexMap<PathBuf, Option<GitInfo>>);
 
 impl GitCache {
     #[must_use]
@@ -203,4 +203,11 @@ impl GitCache {
         self.0.insert(root, info.clone());
         info
     }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Special {
+    pub upstream_file: Option<String>,
+    pub upstream_repo: Option<String>,
 }

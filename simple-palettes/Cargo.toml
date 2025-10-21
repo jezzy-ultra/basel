@@ -10,14 +10,29 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-dioxus.workspace = true
-dioxus-primitives.workspace = true
+axum = { version = "0.8", features = ["macros"], optional = true }
+dioxus = { version = "0.7.0-rc.3", features = ["router"] }
+dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1" }
+gloo-storage = "0.3"
+gloo-timers = "0.3"
+palette.workspace = true
+reqwest = { version = "0.12", features = ["json"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { version = "1", features = ["full"], optional = true }
+web-sys = { version = "0.3", features = [
+  "DomRect",
+  "HtmlElement",
+  "PointerEvent",
+  "Window",
+] }
 
 [features]
 default = ["web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
-web = ["dioxus/web"]
+server = ["dep:axum", "dep:tokio", "dioxus/fullstack", "dioxus/server"]
+web = ["dioxus/fullstack", "dioxus/web"]
 
 [lints]
 workspace = true

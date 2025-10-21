@@ -1,27 +1,24 @@
-use std::env::VarError;
-use std::fs;
-use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::path::PathBuf;
 use std::result::Result as StdResult;
+use std::{fs, io};
 
 use log::debug;
 use serde::Deserialize;
-use shellexpand::LookupError;
-use toml::de::Error as TomlDeError;
 
 const CONFIG_FILE: &str = "basel.toml";
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+
+pub(crate) enum Error {
     #[error("failed to read `{CONFIG_FILE}`: {src}")]
-    Reading { src: IoError },
+    Reading { src: io::Error },
     #[error("failed to parse `{CONFIG_FILE}`: {src}")]
-    Parsing { src: Box<TomlDeError> },
+    Parsing { src: Box<toml::de::Error> },
     #[error("failed to expand path `{path}`: {src}")]
     Expanding {
         path: String,
-        src: LookupError<VarError>,
+        src: shellexpand::LookupError<std::env::VarError>,
     },
 }
 
@@ -82,7 +79,7 @@ impl Default for Config {
 fn read_config() -> Result<Option<String>> {
     match fs::read_to_string(CONFIG_FILE) {
         Ok(content) => Ok(Some(content)),
-        Err(e) if e.kind() == IoErrorKind::NotFound => {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
             debug!("no `{CONFIG_FILE}` found, using defaults");
 
             Ok(None)
@@ -111,20 +108,23 @@ fn expand_path(path: &str) -> Result<String> {
 
 fn expand_paths(config: &mut Config) -> Result<()> {
     config.dirs.schemes = expand_path(&config.dirs.schemes)?;
+
     config.dirs.templates = expand_path(&config.dirs.templates)?;
+
     config.dirs.render = expand_path(&config.dirs.render)?;
 
     if let Some(upstream) = &mut config.upstream
         && let Some(repo_path) = &upstream.repo_path
     {
         let expanded = expand_path(&repo_path.to_string_lossy())?;
+
         upstream.repo_path = Some(PathBuf::from(expanded));
     }
 
     Ok(())
 }
 
-pub fn load() -> Result<Config> {
+pub(crate) fn load() -> Result<Config> {
     let mut cfg = read_config().and_then(|opt| parse_config(opt.as_deref()))?;
 
     expand_paths(&mut cfg).map(|()| cfg)

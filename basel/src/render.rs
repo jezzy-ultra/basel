@@ -1,108 +1,27 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, Result as AnyhowResult};
+use anyhow::Context as _;
 use indexmap::IndexMap;
 use log::{debug, info, warn};
-use minijinja::Template as JinjaTemplate;
 
-use crate::config::Config;
-use crate::directives::Directives;
-use crate::format::format;
-use crate::manifest::{FileStatus, Manifest};
-use crate::schemes::{SCHEME_MARKER, Scheme};
-use crate::swatches::{SWATCH_MARKER, SWATCH_VARIABLE};
-use crate::templates::{JINJA_TEMPLATE_SUFFIX, Loader, SET_TEST_OBJECT, SKIP_RENDERING_PREFIX};
-use crate::upstream::{GitCache, GitInfo};
-use crate::{Error, Result, Special, upstream};
+use crate::output::upstream::Special;
+use crate::output::{Decision, GitCache, GitInfo, WriteMode, format, strategy, upstream};
+use crate::templates::{
+    Directives, JINJA_TEMPLATE_SUFFIX, Loader, SET_TEST_OBJECT, SKIP_RENDERING_PREFIX,
+};
+use crate::{Config, Error, Result, Scheme};
 
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WriteMode {
-    Smart,
-    Skip,
-    Force,
-}
+mod context;
+mod manifest;
+mod objects;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Decision {
-    Create,
-    Recreate,
-    Update,
-    Overwrite,
-    Skip,
-    Conflict,
-}
+pub(crate) use self::manifest::{Error as ManifestError, Manifest};
+use self::objects::Color;
 
-impl Decision {
-    const fn should_write(self) -> bool {
-        use Decision::{Conflict, Create, Overwrite, Recreate, Skip, Update};
-
-        match self {
-            Create | Recreate | Update | Overwrite => true,
-            Skip | Conflict => false,
-        }
-    }
-
-    const fn log_action(self) -> &'static str {
-        use Decision::{Conflict, Create, Overwrite, Recreate, Skip, Update};
-
-        match self {
-            Create => "creating",
-            Recreate => "recreating",
-            Update => "updating",
-            Overwrite => "overwriting",
-            Skip => "skipped",
-            Conflict => "conflict",
-        }
-    }
-}
-
-const fn decide_write(status: FileStatus, mode: WriteMode) -> Decision {
-    use Decision::{Conflict, Create, Overwrite, Recreate, Skip, Update};
-    use FileStatus::{NotTracked, Tracked};
-
-    match (status, mode) {
-        (NotTracked, _) => Create,
-        (
-            Tracked {
-                file_exists: false, ..
-            },
-            _,
-        ) => Recreate,
-        (
-            Tracked {
-                user_modified: true,
-                ..
-            },
-            WriteMode::Force,
-        ) => Overwrite,
-        (
-            Tracked {
-                user_modified: true,
-                ..
-            },
-            WriteMode::Smart,
-        ) => Conflict,
-        (
-            Tracked {
-                user_modified: false,
-                template_changed: false,
-                scheme_changed: false,
-                ..
-            },
-            _,
-        )
-        | (Tracked { .. }, WriteMode::Skip) => Skip,
-        (
-            Tracked {
-                user_modified: false,
-                ..
-            },
-            _,
-        ) => Update,
-    }
-}
+const SCHEME_MARKER: &str = "SCHEME";
+const SWATCH_MARKER: &str = "SWATCH";
+const SWATCH_VARIABLE: &str = "swatch";
 
 fn uses_swatch_iteration(template_name: &str) -> bool {
     template_name.contains(SWATCH_MARKER)
@@ -113,7 +32,7 @@ fn resolve_path(
     scheme_name: &str,
     config: &Config,
     swatch_name: Option<&str>,
-) -> AnyhowResult<PathBuf> {
+) -> anyhow::Result<PathBuf> {
     let relative_path = template_name
         .strip_suffix(JINJA_TEMPLATE_SUFFIX)
         .unwrap_or(template_name);
@@ -184,9 +103,11 @@ fn resolve_with_repo_path(
     git_cache: &mut GitCache,
 ) -> Option<(GitInfo, PathBuf)> {
     let prefix = Path::new(render_dir).join(scheme_name);
+
     let rel_path = strip_prefix(render_path, &prefix, "configuring repo_path mode")?;
 
     let target_path = repo_path.join(&rel_path);
+
     git_info_with(&target_path, "configuring repo_path mode", git_cache)
 }
 
@@ -231,9 +152,11 @@ fn build_upstream(
     };
 
     let pattern_override = upstream_cfg.pattern.as_deref();
+
     let branch_override = upstream_cfg.branch.as_deref();
 
     let url = upstream::build_url(&git_info, &rel_path, pattern_override, branch_override);
+
     let repo = upstream::extract_base_url(&url);
 
     Special {
@@ -250,15 +173,16 @@ fn should_render(name: &str) -> bool {
 
 #[non_exhaustive]
 #[derive(Debug)]
-pub struct Context {
+
+pub(crate) struct Session {
     pub manifest: Manifest,
     pub git_cache: GitCache,
     pub write_mode: WriteMode,
     pub dry_run: bool,
 }
 
-impl Context {
-    pub fn new(write_mode: WriteMode, dry_run: bool) -> Result<Self> {
+impl Session {
+    fn new(write_mode: WriteMode, dry_run: bool) -> Result<Self> {
         Ok(Self {
             manifest: Manifest::load_or_create()?,
             git_cache: GitCache::new(),
@@ -267,7 +191,7 @@ impl Context {
         })
     }
 
-    pub fn save(self) -> Result<()> {
+    fn save(self) -> Result<()> {
         if !self.dry_run {
             self.manifest.save()?;
         }
@@ -276,50 +200,49 @@ impl Context {
     }
 }
 
-// TODO: break up big function by extracting helper(s)
-fn render_single(
+fn prepare(
+    path: &Path,
     scheme: &Scheme,
     template_name: &str,
-    template: &JinjaTemplate<'_, '_>,
+    template: &minijinja::Template<'_, '_>,
     directives: &Directives,
-    config: &Config,
-    context: &mut Context,
+    special: &Special,
     current_swatch: Option<&str>,
-) -> AnyhowResult<()> {
-    let scheme_name = scheme.name.as_str();
+) -> anyhow::Result<String> {
+    let context = context::build(scheme, special, &directives.style, current_swatch)?;
 
-    let path = resolve_path(template_name, scheme_name, config, current_swatch)?;
-
-    let special = build_upstream(scheme_name, &path, &mut context.git_cache, config);
-
-    let scheme_ctx = scheme.to_context(
-        directives.config.color_format,
-        directives.config.text_format,
-        &special,
-        current_swatch,
-    )?;
-
-    if !scheme_ctx.contains_key(SET_TEST_OBJECT) {
+    if !context.contains_key(SET_TEST_OBJECT) {
         return Err(Error::InternalBug {
             module: "render",
             reason: format!(
-                "scheme `{scheme_name}` context for template `{template_name}` missing \
-                 `{SET_TEST_OBJECT}` template variable"
+                "scheme `{}` context for template `{template_name}` missing `{SET_TEST_OBJECT}` \
+                 template variable",
+                scheme.name.as_str()
             ),
         }
         .into());
     }
 
-    let rendered = template.render(&scheme_ctx).with_context(|| {
-        format!("rendering template `{template_name}` with scheme `{scheme_name}`")
+    let rendered = template.render(&context).with_context(|| {
+        format!(
+            "rendering template `{template_name}` with scheme `{}`",
+            scheme.name.as_str()
+        )
     })?;
 
-    let header = directives.make_header(&path);
-    let output = format!("{header}{rendered}");
+    let header = directives.make_header(path);
 
-    let status = context.manifest.check_file(&path, template, scheme)?;
-    let decision = decide_write(status, context.write_mode);
+    Ok(format!("{header}{rendered}"))
+}
 
+fn execute(
+    decision: Decision,
+    path: &Path,
+    output: &str,
+    scheme: &Scheme,
+    template: &minijinja::Template<'_, '_>,
+    session: &mut Session,
+) -> anyhow::Result<()> {
     match decision {
         // TODO: add interactive mode (possibly as default behavior?)
         Decision::Conflict => {
@@ -329,7 +252,7 @@ fn render_single(
             );
         }
         _ if decision.should_write() => {
-            if context.dry_run {
+            if session.dry_run {
                 info!(
                     "would write `{}` ({})",
                     path.display(),
@@ -341,15 +264,16 @@ fn render_single(
                         .with_context(|| format!("writing file `{}`", path.display()))?;
                 }
 
-                fs::write(&path, &output)
+                fs::write(path, output)
                     .with_context(|| format!("writing file `{}`", path.display()))?;
 
-                let entry = Manifest::make_entry(path.clone(), template, scheme, &output)?;
-                context.manifest.insert(entry);
+                let entry = Manifest::make_entry(path.to_path_buf(), template, scheme, output)?;
+
+                session.manifest.insert(entry);
 
                 info!("generated `{}`", path.display());
 
-                format(&path)?;
+                format(path)?;
             }
         }
         _ => {
@@ -360,14 +284,57 @@ fn render_single(
     Ok(())
 }
 
+fn write(
+    scheme: &Scheme,
+    template_name: &str,
+    template: &minijinja::Template<'_, '_>,
+    directives: &Directives,
+    config: &Config,
+    session: &mut Session,
+    current_swatch: Option<&str>,
+) -> anyhow::Result<()> {
+    let scheme_name = scheme.name.as_str();
+    let path = resolve_path(template_name, scheme_name, config, current_swatch)?;
+    let special = build_upstream(scheme_name, &path, &mut session.git_cache, config);
+
+    let output = prepare(
+        &path,
+        scheme,
+        template_name,
+        template,
+        directives,
+        &special,
+        current_swatch,
+    )?;
+
+    let status = session.manifest.check_file(&path, scheme, template)?;
+    let decision = strategy::decide(status, session.write_mode);
+
+    execute(decision, &path, &output, scheme, template, session)?;
+
+    Ok(())
+}
+
+pub(crate) fn apply(
+    scheme: &Scheme,
+    template_name: &str,
+    template: &minijinja::Template<'_, '_>,
+    directives: &Directives,
+    config: &Config,
+    session: &mut Session,
+) -> Result<()> {
+    apply_internal(scheme, template_name, template, directives, config, session)
+        .map_err(Error::rendering)
+}
+
 fn apply_internal(
     scheme: &Scheme,
     template_name: &str,
-    template: &JinjaTemplate<'_, '_>,
+    template: &minijinja::Template<'_, '_>,
     directives: &Directives,
     config: &Config,
-    context: &mut Context,
-) -> AnyhowResult<()> {
+    session: &mut Session,
+) -> anyhow::Result<()> {
     if uses_swatch_iteration(template_name) {
         if !template.source().contains(SWATCH_VARIABLE) {
             warn!(
@@ -377,24 +344,24 @@ fn apply_internal(
         }
 
         for swatch in &scheme.palette {
-            render_single(
+            write(
                 scheme,
                 template_name,
                 template,
                 directives,
                 config,
-                context,
+                session,
                 Some(swatch.name.as_str()),
             )?;
         }
     } else {
-        render_single(
+        write(
             scheme,
             template_name,
             template,
             directives,
             config,
-            context,
+            session,
             None,
         )?;
     }
@@ -402,24 +369,21 @@ fn apply_internal(
     Ok(())
 }
 
-pub fn apply(
+pub(crate) fn scheme(
     scheme: &Scheme,
-    template_name: &str,
-    template: &JinjaTemplate<'_, '_>,
-    directives: &Directives,
+    templates: &Loader,
     config: &Config,
-    context: &mut Context,
+    session: &mut Session,
 ) -> Result<()> {
-    apply_internal(scheme, template_name, template, directives, config, context)
-        .map_err(Error::rendering)
+    scheme_internal(scheme, templates, config, session).map_err(Error::rendering)
 }
 
 fn scheme_internal(
     scheme: &Scheme,
     templates: &Loader,
     config: &Config,
-    context: &mut Context,
-) -> AnyhowResult<()> {
+    session: &mut Session,
+) -> anyhow::Result<()> {
     for (template_name, (template, directives)) in templates.with_directives()? {
         if !should_render(template_name) {
             continue;
@@ -431,20 +395,21 @@ fn scheme_internal(
             &template,
             directives,
             config,
-            context,
+            session,
         )?;
     }
 
     Ok(())
 }
 
-pub fn scheme(
-    scheme: &Scheme,
+pub(crate) fn all(
     templates: &Loader,
+    schemes: &IndexMap<String, Scheme>,
     config: &Config,
-    context: &mut Context,
+    write_mode: WriteMode,
+    dry_run: bool,
 ) -> Result<()> {
-    scheme_internal(scheme, templates, config, context).map_err(Error::rendering)
+    all_internal(templates, schemes, config, write_mode, dry_run).map_err(Error::rendering)
 }
 
 fn all_internal(
@@ -453,8 +418,8 @@ fn all_internal(
     config: &Config,
     write_mode: WriteMode,
     dry_run: bool,
-) -> AnyhowResult<()> {
-    let mut ctx = Context::new(write_mode, dry_run)?;
+) -> anyhow::Result<()> {
+    let mut ctx = Session::new(write_mode, dry_run)?;
 
     for scheme_ref in schemes.values() {
         scheme(scheme_ref, templates, config, &mut ctx)?;
@@ -463,14 +428,4 @@ fn all_internal(
     ctx.save()?;
 
     Ok(())
-}
-
-pub fn all(
-    templates: &Loader,
-    schemes: &IndexMap<String, Scheme>,
-    config: &Config,
-    write_mode: WriteMode,
-    dry_run: bool,
-) -> Result<()> {
-    all_internal(templates, schemes, config, write_mode, dry_run).map_err(Error::rendering)
 }

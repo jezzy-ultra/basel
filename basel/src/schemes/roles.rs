@@ -6,7 +6,7 @@ use owo_colors::OwoColorize as _;
 use owo_colors::Stream::Stdout;
 use serde::Serialize;
 
-use crate::swatches::SwatchName;
+use super::swatches::SwatchName;
 
 pub(crate) const ROLE_VARIANT_SEPARATOR: char = '_';
 
@@ -138,7 +138,7 @@ const ROLES: &[&str] = &[
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(crate) enum Error {
     #[error("undefined role `{0}`")]
     UndefinedRole(String),
     #[error("circular role references: {}", format_circular_chain(.0))]
@@ -168,14 +168,14 @@ fn format_circular_chain(roles: &[String]) -> String {
 pub(crate) type Result<T> = StdResult<T, Error>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-pub struct RoleName(&'static str);
+pub(crate) struct RoleName(&'static str);
 
 impl RoleName {
     #[expect(clippy::unreachable, reason = "guaranteed by role design")]
     #[must_use]
-    pub fn classify(&self) -> RoleKind {
+    pub(crate) fn classify(&self) -> RoleKind {
         if is_base(self.as_str()) {
-            RoleKind::Base(BaseRole(*self))
+            RoleKind::Base
         } else {
             let base_str = extract_base(self.as_str());
             let base_role = ROLES
@@ -184,19 +184,14 @@ impl RoleName {
                 .copied()
                 .map_or_else(|| unreachable!("optional roles always have a base"), Self);
 
-            RoleKind::Optional(OptionalRole {
-                name: *self,
-                base: BaseRole(base_role),
+            RoleKind::Optional(Optional {
+                base: Base(base_role),
             })
         }
     }
 
-    pub fn parse(s: &str) -> Result<Self> {
-        s.parse()
-    }
-
     #[must_use]
-    pub const fn as_str(&self) -> &str {
+    pub(crate) const fn as_str(&self) -> &str {
         self.0
     }
 }
@@ -241,49 +236,43 @@ pub(crate) fn base() -> impl Iterator<Item = RoleName> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BaseRole(RoleName);
+pub(crate) struct Base(RoleName);
 
-impl BaseRole {
+impl Base {
     #[must_use]
-    pub const fn name(&self) -> &RoleName {
+    const fn name(&self) -> &RoleName {
         &self.0
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct OptionalRole {
-    name: RoleName,
-    base: BaseRole,
+pub(crate) struct Optional {
+    base: Base,
 }
 
-impl OptionalRole {
+impl Optional {
     #[must_use]
-    pub const fn name(&self) -> &RoleName {
-        &self.name
-    }
-
-    #[must_use]
-    pub const fn base(&self) -> &RoleName {
+    pub(crate) const fn base(&self) -> &RoleName {
         self.base.name()
     }
 }
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
-pub enum RoleKind {
-    Base(BaseRole),
-    Optional(OptionalRole),
+pub(crate) enum RoleKind {
+    Base,
+    Optional(Optional),
 }
 
 #[non_exhaustive]
 #[derive(Debug, Serialize)]
-pub enum RoleValue {
+pub(crate) enum RoleValue {
     Swatch(SwatchName),
     Role(RoleName),
 }
 
 impl RoleValue {
-    pub fn parse(val: &str) -> Result<Self> {
+    pub(crate) fn parse(val: &str) -> Result<Self> {
         if let Some(swatch_name) = val.strip_prefix('$') {
             let display_name = SwatchName::parse(swatch_name).map_err(|_err| {
                 Error::UndefinedRole(format!("invalid swatch reference: `${swatch_name}`"))

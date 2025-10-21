@@ -28,71 +28,9 @@ categories = [
 ]
 
 [workspace.dependencies]
-anyhow = "1"
-deunicode = "1"
-dioxus = "0.7.0-rc.2"
-dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1" }
-env_logger = "0.11"
-git-url-parse = "0.6"
-git2 = "0.20"
-indoc = "2"
-json5format = "0.2"
-log = "0.4"
-pretty_assertions = "1"
-quick-xml = "0.38"
-sha2 = "0.10"
-shellexpand = "3"
-taplo = "0.14"
-tempfile = "3"
-thiserror = "2"
-unicode-normalization = "0.1"
-walkdir = "2"
-
-[workspace.dependencies.clap]
-version = "4"
-features = ["derive"]
-
-[workspace.dependencies.comrak]
-version = "0.44"
-features = ["shortcodes"]
-
-[workspace.dependencies.hex_color]
-version = "3"
-features = ["serde"]
-
-[workspace.dependencies.indexmap]
-version = "2"
-features = ["serde"]
-
-[workspace.dependencies.minijinja]
-version = "2"
-features = [
-  "json",
-  "loader",
-  "preserve_order",
-  "unicode",
-]
-
-[workspace.dependencies.owo-colors]
-version = "4"
-features = ["supports-colors"]
-
-[workspace.dependencies.serde]
-version = "1"
-features = ["derive"]
-
-[workspace.dependencies.serde_json]
-version = "1"
-features = ["preserve_order"]
-
-[workspace.dependencies.toml]
-version = "0.9"
-features = [
-  "display",
-  "parse",
-  "preserve_order",
-  "serde",
-]
+palette = { version = "0.7", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [workspace.lints.clippy]
 absolute_paths = "warn"

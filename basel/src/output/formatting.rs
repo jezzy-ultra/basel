@@ -1,23 +1,74 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::str::FromStr as _;
 
-use anyhow::{Context as _, Result as AnyhowResult};
-use comrak::{
-    Arena as ComrakArena, ExtensionOptions as ComrakExtensionOptions,
-    ListStyleType as ComrakListStyleType, Options as ComrakOptions,
-    ParseOptions as ComrakParseOptions, RenderOptions as ComrakRenderOptions,
-};
-use json5format::{FormatOptions as Json5Options, Json5Format, ParsedDocument as Json5Parsed};
+use anyhow::Context as _;
+use json5format::Json5Format;
 use log::{debug, info};
-use quick_xml::events::Event as XmlEvent;
-use quick_xml::{Reader as XmlReader, Writer as XmlWriter};
-use taplo::formatter::Options as TaploOptions;
+use strum::EnumString;
 
-use crate::{Error, Result, is_json, is_json5, is_jsonc, is_markdown, is_svg, is_toml, is_xml};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString)]
+#[strum(serialize_all = "lowercase")]
+enum FileType {
+    Json,
+    Jsonc,
+    Json5,
+    Md,
+    Svg,
+    Toml,
+    Xml,
+}
 
-fn toml_format_options() -> TaploOptions {
-    TaploOptions {
+impl FileType {
+    fn from(path: &Path) -> Option<Self> {
+        let ext = path.extension()?.to_str()?;
+
+        Self::from_str(ext).ok()
+    }
+}
+
+pub(crate) fn format(path: &Path) -> anyhow::Result<bool> {
+    let Some(supported_type) = FileType::from(path) else {
+        return Ok(false);
+    };
+
+    match supported_type {
+        FileType::Json => json(path, json_format_options()),
+        FileType::Jsonc | FileType::Json5 => json(path, jsonc_json5_format_options()),
+        FileType::Md => markdown(path),
+        FileType::Toml => toml(path),
+        FileType::Xml | FileType::Svg => xml(path),
+    }
+}
+
+fn toml(path: &Path) -> anyhow::Result<bool> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
+
+    let options = toml_options();
+    let mut formatted = taplo::formatter::format(&content, options);
+
+    if !formatted.ends_with('\n') {
+        formatted.push('\n');
+    }
+
+    if formatted == content {
+        debug!("formatting unnecessary for `{}`", path.display());
+
+        Ok(false)
+    } else {
+        fs::write(path, formatted)
+            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
+
+        info!("formatted `{}`", path.display());
+
+        Ok(true)
+    }
+}
+
+fn toml_options() -> taplo::formatter::Options {
+    taplo::formatter::Options {
         align_entries: false,
         align_comments: true,
         align_single_comments: true,
@@ -41,12 +92,19 @@ fn toml_format_options() -> TaploOptions {
     }
 }
 
-fn format_toml(path: &Path) -> AnyhowResult<()> {
+fn markdown(path: &Path) -> anyhow::Result<bool> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
 
-    let options = toml_format_options();
-    let mut formatted = taplo::formatter::format(&content, options);
+    let arena = comrak::Arena::new();
+
+    let options = markdown_options();
+
+    let root = comrak::parse_document(&arena, &content, &options);
+
+    let mut formatted = String::new();
+    comrak::format_commonmark(root, &options, &mut formatted)
+        .with_context(|| format!("formatting markdown file `{}`", path.display()))?;
 
     if !formatted.ends_with('\n') {
         formatted.push('\n');
@@ -54,19 +112,21 @@ fn format_toml(path: &Path) -> AnyhowResult<()> {
 
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
+
+        Ok(false)
     } else {
         fs::write(path, formatted)
             .with_context(|| format!("writing formatted file `{}`", path.display()))?;
 
         info!("formatted `{}`", path.display());
-    }
 
-    Ok(())
+        Ok(true)
+    }
 }
 
-fn markdown_format_options<'a>() -> ComrakOptions<'a> {
-    ComrakOptions {
-        extension: ComrakExtensionOptions {
+fn markdown_options<'a>() -> comrak::Options<'a> {
+    comrak::Options {
+        extension: comrak::ExtensionOptions {
             strikethrough: true,
             tagfilter: true,
             table: true,
@@ -94,14 +154,14 @@ fn markdown_format_options<'a>() -> ComrakOptions<'a> {
             link_url_rewriter: None,
             cjk_friendly_emphasis: true,
         },
-        parse: ComrakParseOptions {
+        parse: comrak::ParseOptions {
             smart: true,
             default_info_string: None,
             relaxed_tasklist_matching: true,
             relaxed_autolinks: true,
             broken_link_callback: None,
         },
-        render: ComrakRenderOptions {
+        render: comrak::RenderOptions {
             hardbreaks: false,
             github_pre_lang: true,
             full_info_string: true,
@@ -109,7 +169,7 @@ fn markdown_format_options<'a>() -> ComrakOptions<'a> {
             unsafe_: true,
             escape: true,
             sourcepos: false,
-            list_style: ComrakListStyleType::Dash,
+            list_style: comrak::ListStyleType::Dash,
             escaped_char_spans: true,
             ignore_setext: true,
             ignore_empty_links: true,
@@ -123,44 +183,8 @@ fn markdown_format_options<'a>() -> ComrakOptions<'a> {
     }
 }
 
-fn format_markdown(path: &Path) -> AnyhowResult<()> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
-
-    let arena = ComrakArena::new();
-
-    let options = markdown_format_options();
-
-    let root = comrak::parse_document(&arena, &content, &options);
-
-    let mut formatted = String::new();
-    comrak::format_commonmark(root, &options, &mut formatted)
-        .with_context(|| format!("formatting markdown file `{}`", path.display()))?;
-
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
-
-    if formatted == content {
-        debug!("formatting unnecessary for `{}`", path.display());
-    } else {
-        fs::write(path, formatted)
-            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
-
-        info!("formatted `{}`", path.display());
-    }
-
-    Ok(())
-}
-
-enum JsonType {
-    Json,
-    Jsonc,
-    Json5,
-}
-
-fn json_format_options() -> Json5Options {
-    Json5Options {
+fn json_format_options() -> json5format::FormatOptions {
+    json5format::FormatOptions {
         indent_by: 2,
         trailing_commas: false,
         collapse_containers_of_one: true,
@@ -169,26 +193,21 @@ fn json_format_options() -> Json5Options {
     }
 }
 
-fn jsonc_json5_format_options() -> Json5Options {
-    Json5Options {
+fn jsonc_json5_format_options() -> json5format::FormatOptions {
+    json5format::FormatOptions {
         trailing_commas: true,
         ..json_format_options()
     }
 }
 
-fn format_json(path: &Path, json_type: &JsonType) -> AnyhowResult<()> {
+fn json(path: &Path, options: json5format::FormatOptions) -> anyhow::Result<bool> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
-
-    let options = match json_type {
-        JsonType::Json => json_format_options(),
-        JsonType::Jsonc | JsonType::Json5 => jsonc_json5_format_options(),
-    };
 
     let format = Json5Format::with_options(options)
         .with_context(|| format!("creating json5 formatter for `{}`", path.display()))?;
 
-    let parsed = Json5Parsed::from_str(&content, Some(path.display().to_string()))
+    let parsed = json5format::ParsedDocument::from_str(&content, Some(path.display().to_string()))
         .with_context(|| format!("parsing json file `{}`", path.display()))?;
 
     let formatted_bytes = format
@@ -208,35 +227,33 @@ fn format_json(path: &Path, json_type: &JsonType) -> AnyhowResult<()> {
 
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
+
+        Ok(false)
     } else {
         fs::write(path, formatted)
             .with_context(|| format!("writing formatted file `{}`", path.display()))?;
 
         info!("formatted `{}`", path.display());
+
+        Ok(true)
     }
-
-    Ok(())
 }
 
-const fn xml_format_options() -> (u8, usize) {
-    (b' ', 2)
-}
-
-fn format_xml(path: &Path) -> AnyhowResult<()> {
+fn xml(path: &Path) -> anyhow::Result<bool> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
 
     let (indent_char, indent_size) = xml_format_options();
 
-    let mut reader = XmlReader::from_str(&content);
+    let mut reader = quick_xml::Reader::from_str(&content);
     reader.config_mut().check_comments = true;
     reader.config_mut().enable_all_checks(true);
 
-    let mut writer = XmlWriter::new_with_indent(Vec::<u8>::new(), indent_char, indent_size);
+    let mut writer = quick_xml::Writer::new_with_indent(Vec::<u8>::new(), indent_char, indent_size);
 
     loop {
         match reader.read_event() {
-            Ok(XmlEvent::Eof) => break,
+            Ok(quick_xml::events::Event::Eof) => break,
             Ok(event) => {
                 writer
                     .write_event(event)
@@ -257,44 +274,18 @@ fn format_xml(path: &Path) -> AnyhowResult<()> {
 
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
+
+        Ok(false)
     } else {
         fs::write(path, formatted)
             .with_context(|| format!("writing formatted file `{}`", path.display()))?;
 
         info!("formatted `{}`", path.display());
-    }
 
-    Ok(())
+        Ok(true)
+    }
 }
 
-fn format_internal(path: &Path) -> AnyhowResult<()> {
-    if is_toml(path) {
-        format_toml(path)?;
-    }
-
-    if is_markdown(path) {
-        format_markdown(path)?;
-    }
-
-    if is_json(path) {
-        format_json(path, &JsonType::Json)?;
-    }
-
-    if is_jsonc(path) {
-        format_json(path, &JsonType::Jsonc)?;
-    }
-
-    if is_json5(path) {
-        format_json(path, &JsonType::Json5)?;
-    }
-
-    if is_xml(path) || is_svg(path) {
-        format_xml(path)?;
-    }
-
-    Ok(())
-}
-
-pub(crate) fn format(path: &Path) -> Result<()> {
-    format_internal(path).map_err(Error::formatting)
+const fn xml_format_options() -> (u8, usize) {
+    (b' ', 2)
 }

@@ -1,36 +1,33 @@
 use std::fs;
 use std::result::Result as StdResult;
 
-use anyhow::{Context as _, Result as AnyhowResult};
+use anyhow::Context as _;
 use indexmap::IndexMap;
-use minijinja::{
-    Environment, Error as JinjaError, ErrorKind as JinjaErrorKind, State as JinjaState, Template,
-    UndefinedBehavior, Value as JinjaValue,
-};
 use walkdir::WalkDir;
 
-use crate::config::Config;
-use crate::directives::Directives;
-use crate::{Error, Result, has_extension};
+pub(crate) mod directives;
+
+pub(crate) use self::directives::Directives;
+use crate::{Config, Error, PathExt as _, Result};
 
 pub(crate) const SET_TEST_OBJECT: &str = "_set";
 pub(crate) const JINJA_TEMPLATE_SUFFIX: &str = ".jinja";
 pub(crate) const SKIP_RENDERING_PREFIX: char = '_';
 
 #[derive(Debug)]
-pub struct Loader {
-    env: Environment<'static>,
+pub(crate) struct Loader {
+    env: minijinja::Environment<'static>,
     directives: IndexMap<String, Directives>,
 }
 
 impl Loader {
     fn create_set_test(
-        state: &JinjaState<'_, '_>,
-        value: &JinjaValue,
-    ) -> StdResult<bool, JinjaError> {
+        state: &minijinja::State<'_, '_>,
+        value: &minijinja::Value,
+    ) -> StdResult<bool, minijinja::Error> {
         let role_name = value.as_str().ok_or_else(|| {
-            JinjaError::new(
-                JinjaErrorKind::InvalidOperation,
+            minijinja::Error::new(
+                minijinja::ErrorKind::InvalidOperation,
                 "`set` test requires a string argument",
             )
         })?;
@@ -48,23 +45,24 @@ impl Loader {
                 }
                 Ok(false)
             }
-            None => Err(JinjaError::new(
-                JinjaErrorKind::UndefinedError,
+            None => Err(minijinja::Error::new(
+                minijinja::ErrorKind::UndefinedError,
                 "`_set` missing from context",
             )),
         }
     }
 
     fn load_templates_and_directives(
-        env: &mut Environment<'static>,
+        env: &mut minijinja::Environment<'static>,
         dir: &str,
         strip_patterns: &[Vec<String>],
-    ) -> AnyhowResult<IndexMap<String, Directives>> {
+    ) -> anyhow::Result<IndexMap<String, Directives>> {
         let mut directives_map = IndexMap::new();
 
         for entry in WalkDir::new(dir).into_iter().filter_map(StdResult::ok) {
             let path = entry.path();
-            if has_extension(path, "jinja") {
+
+            if path.is_jinja() {
                 let name = path
                     .strip_prefix(dir)
                     .with_context(|| {
@@ -97,10 +95,10 @@ impl Loader {
         Ok(directives_map)
     }
 
-    fn new_internal(config: &Config) -> AnyhowResult<Self> {
-        let mut env = Environment::new();
+    fn new_internal(config: &Config) -> anyhow::Result<Self> {
+        let mut env = minijinja::Environment::new();
 
-        env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::SemiStrict);
         env.set_trim_blocks(true);
         env.set_lstrip_blocks(true);
 
@@ -117,14 +115,15 @@ impl Loader {
         Ok(Self { env, directives })
     }
 
-    pub fn new(config: &Config) -> Result<Self> {
+    pub(crate) fn new(config: &Config) -> Result<Self> {
         Self::new_internal(config).map_err(Error::template)
     }
 
     pub(crate) fn with_directives(
         &self,
-    ) -> AnyhowResult<IndexMap<&str, (Template<'_, '_>, &Directives)>> {
-        let mut templates: IndexMap<&str, (Template<'_, '_>, &Directives)> = IndexMap::new();
+    ) -> anyhow::Result<IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)>> {
+        let mut templates: IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)> =
+            IndexMap::new();
         for (name, t) in self.env.templates() {
             let directives = self
                 .directives

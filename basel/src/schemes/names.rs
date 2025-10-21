@@ -1,6 +1,13 @@
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::marker::PhantomData;
+use std::result::Result as StdResult;
+use std::str::FromStr;
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use unicode_normalization::UnicodeNormalization as _;
 
 use crate::Result;
+use crate::output::{Ascii, Unicode};
 
 const MAX_NAME_LENGTH: usize = 255;
 
@@ -11,7 +18,7 @@ const WINDOWS_RESERVED: &[&str] = &[
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(crate) enum Error {
     #[error("invalid {context} name `{name}`: {reason}")]
     Invalid {
         context: String,
@@ -198,90 +205,87 @@ pub(crate) fn to_ascii(display_name: &str, context: &str) -> Result<String> {
     Ok(ascii_name)
 }
 
-#[macro_export]
-macro_rules! name_type {
-    ($display_type:ident, $ascii_type:ident, $context:expr) => {
-        #[derive(
-            ::core::fmt::Debug,
-            ::core::clone::Clone,
-            ::core::cmp::PartialEq,
-            ::core::cmp::Eq,
-            ::core::hash::Hash,
-            ::serde::Serialize,
-            ::serde::Deserialize,
-        )]
-        pub struct $display_type(String);
+pub(crate) trait TextKind {
+    fn validate(normalized: &str, domain: &str) -> Result<()>;
+}
 
-        impl $display_type {
-            pub fn parse(s: &str) -> $crate::Result<Self> {
-                <Self as ::core::str::FromStr>::from_str(s)
-            }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct Validated<const DOMAIN: &'static str, K> {
+    inner: String,
+    _kind: PhantomData<K>,
+}
 
-            pub fn to_ascii(&self) -> $crate::Result<$ascii_type> {
-                let ascii_string = $crate::names::to_ascii(&self.0, $context)?;
+impl<const DOMAIN: &'static str, K: TextKind> Validated<DOMAIN, K> {
+    pub(crate) fn parse(s: &str) -> Result<Self> {
+        s.parse()
+    }
 
-                Ok($ascii_type(ascii_string))
-            }
+    #[must_use]
+    pub(crate) fn as_str(&self) -> &str {
+        &self.inner
+    }
+}
 
-            #[must_use]
-            pub fn as_str(&self) -> &str {
-                &self.0
-            }
-        }
+impl<const DOMAIN: &'static str> Validated<DOMAIN, Unicode> {
+    pub(crate) fn to_ascii(&self) -> Result<Validated<DOMAIN, Ascii>> {
+        let ascii_string = to_ascii(&self.inner, DOMAIN)?;
 
-        impl ::core::str::FromStr for $display_type {
-            type Err = $crate::Error;
+        Ok(Validated {
+            inner: ascii_string,
+            _kind: PhantomData,
+        })
+    }
+}
 
-            fn from_str(s: &str) -> $crate::Result<Self> {
-                let normalized = $crate::names::normalize_and_validate(s, $context)?;
+impl<const DOMAIN: &'static str, K: TextKind> FromStr for Validated<DOMAIN, K> {
+    type Err = crate::Error;
 
-                Ok(Self(normalized))
-            }
-        }
+    fn from_str(s: &str) -> Result<Self> {
+        let normalized = normalize_and_validate(s, DOMAIN)?;
 
-        impl ::core::fmt::Display for $display_type {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                ::core::write!(f, "{}", &self.0)
-            }
-        }
+        K::validate(&normalized, DOMAIN)?;
 
-        #[derive(
-            ::core::fmt::Debug,
-            ::core::clone::Clone,
-            ::core::cmp::PartialEq,
-            ::core::cmp::Eq,
-            ::core::hash::Hash,
-            ::serde::Serialize,
-            ::serde::Deserialize,
-        )]
-        pub struct $ascii_type(::std::string::String);
+        Ok(Self {
+            inner: normalized,
+            _kind: PhantomData,
+        })
+    }
+}
 
-        impl $ascii_type {
-            pub fn parse(s: &str) -> $crate::Result<Self> {
-                <Self as ::core::str::FromStr>::from_str(s)
-            }
+impl<const DOMAIN: &'static str, K> Display for Validated<DOMAIN, K> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", &self.inner)
+    }
+}
 
-            #[must_use]
-            pub fn as_str(&self) -> &str {
-                &self.0
-            }
-        }
+impl<const DOMAIN: &'static str, K> Serialize for Validated<DOMAIN, K> {
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.inner)
+    }
+}
 
-        impl ::core::str::FromStr for $ascii_type {
-            type Err = $crate::Error;
+impl<'de, const DOMAIN: &'static str, K: TextKind> Deserialize<'de> for Validated<DOMAIN, K> {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
 
-            fn from_str(s: &str) -> $crate::Result<Self> {
-                let normalized = $crate::names::normalize_and_validate(s, $context)?;
-                $crate::names::validate_set_ascii(&normalized, $context)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
 
-                Ok(Self(normalized))
-            }
-        }
+impl TextKind for Unicode {
+    fn validate(_normalized: &str, _domain: &str) -> Result<()> {
+        Ok(())
+    }
+}
 
-        impl ::core::fmt::Display for $ascii_type {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                ::core::write!(f, "{}", &self.0)
-            }
-        }
-    };
+impl TextKind for Ascii {
+    fn validate(normalized: &str, domain: &str) -> Result<()> {
+        validate_set_ascii(normalized, domain)
+    }
 }

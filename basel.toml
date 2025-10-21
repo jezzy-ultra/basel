@@ -7,4 +7,4 @@ render = "render"
 repo_path = "~/src/cutiepro"
 pattern = "{base}/blob/{branch}/{file}"
 branch = "main"
-strip_directives = [["#:tombi", "lint.disabled", "=", "true"]]
+strip_directives = [["#:tombi"]]

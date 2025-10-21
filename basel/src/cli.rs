@@ -5,7 +5,7 @@ use clap::{ArgAction, Parser};
 use env_logger::Builder as LoggerBuilder;
 use log::{LevelFilter as LogLevelFilter, info};
 
-use crate::render::WriteMode;
+use crate::output::WriteMode;
 use crate::templates::Loader;
 use crate::{Result, config, render, schemes};
 
@@ -76,7 +76,7 @@ pub fn run() -> Result<()> {
     let config = config::load()?;
 
     let templates = Loader::new(&config)?;
-    let schemes = schemes::load_all(&config.dirs.schemes)?;
+    let schemes = schemes::load::all(&config.dirs.schemes)?;
 
     if cli.clean {
         let render_dir = Path::new(&config.dirs.render);

@@ -11,34 +11,46 @@ categories.workspace = true
 default-run = "basel"
 
 [dependencies]
-anyhow.workspace = true
-clap.workspace = true
-comrak.workspace = true
-deunicode.workspace = true
-env_logger.workspace = true
-git-url-parse.workspace = true
-git2.workspace = true
-hex_color.workspace = true
-indexmap.workspace = true
-indoc.workspace = true
-json5format.workspace = true
-log.workspace = true
-minijinja.workspace = true
-owo-colors.workspace = true
-quick-xml.workspace = true
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+comrak = { version = "0.44", features = ["shortcodes"] }
+deunicode = "1"
+env_logger = "0.11"
+git-url-parse = "0.6"
+git2 = "0.20"
+hex_color = { version = "3", features = ["serde"] }
+indexmap = { version = "2", features = ["serde"] }
+indoc = "2"
+json5format = "0.2"
+log = "0.4"
+minijinja = { version = "2", features = [
+  "json",
+  "loader",
+  "preserve_order",
+  "unicode",
+] }
+owo-colors = { version = "4", features = ["supports-colors"] }
+palette.workspace = true
+quick-xml = "0.38"
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
-shellexpand.workspace = true
-taplo.workspace = true
-thiserror.workspace = true
-toml.workspace = true
-unicode-normalization.workspace = true
-walkdir.workspace = true
+sha2 = "0.10"
+shellexpand = "3"
+strum = { version = "0.27", features = ["derive"] }
+taplo = "0.14"
+thiserror = "2"
+toml = { version = "0.9", features = [
+  "display",
+  "parse",
+  "preserve_order",
+  "serde",
+] }
+unicode-normalization = "0.1"
+walkdir = "2"
 
 [dev-dependencies]
-pretty_assertions.workspace = true
-tempfile.workspace = true
+pretty_assertions = "1"
+tempfile = "3"
 
 [lints]
 workspace = true
