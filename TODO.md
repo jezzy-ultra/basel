@@ -54,6 +54,6 @@
 
 ## cutiepro
 
-- [ ] make `creamsicle` slightly yellower (or `sand` slightly redder?)
 - [ ] add four additional colors to the rainbow brackets for a total of 10
       levels
+- [x] make `creamsicle` slightly yellower (or `sand` slightly redder?)
