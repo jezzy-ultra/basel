@@ -147,8 +147,6 @@
                 export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"
               ''}
 
-              export RUST_BACKTRACE="1"
-
               echo ""
               echo "basel developer environment active"
               echo "rust: $(rustc --version)"

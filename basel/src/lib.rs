@@ -11,28 +11,38 @@
 #![allow(missing_docs, reason = "todo: better documentation")]
 #![allow(clippy::missing_docs_in_private_items, reason = "todo: documentation")]
 #![allow(clippy::missing_errors_doc, reason = "todo: documentation")]
-#![allow(clippy::redundant_pub_crate, reason = "a fuckton of false positives")]
+#![expect(
+    incomplete_features,
+    reason = "`unsized_const_params` is useful but not finalized yet"
+)]
+#![expect(
+    clippy::redundant_pub_crate,
+    reason = "seems to be broken for `pub(crate)` errors"
+)]
 
 use std::io;
 use std::result::Result as StdResult;
 
 mod extensions;
+mod manifest;
 mod output;
 mod render;
+pub(crate) mod schemes;
 mod templates;
 
 use self::config::Error as ConfigError;
+use self::manifest::Error as ManifestError;
+pub(crate) use self::manifest::{Entry as ManifestEntry, Manifest};
 use self::output::UpstreamError;
-use self::render::ManifestError;
+pub(crate) use self::schemes::Scheme;
 use self::schemes::{Error as SchemeError, NameError, RoleError, SwatchError};
+use self::templates::{DirectiveError, HostError};
 
 pub mod cli;
 pub mod config;
-pub(crate) mod schemes;
 
 pub use self::config::Config;
 pub use self::extensions::PathExt;
-pub(crate) use self::schemes::Scheme;
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
@@ -43,24 +53,40 @@ pub(crate) use self::schemes::Scheme;
 pub enum Error {
     #[error("configuration error: {0}")]
     Config(#[from] ConfigError),
-    #[error("scheme error: {0}")]
-    Scheme(#[from] SchemeError),
-    #[error("name validation error: {0}")]
-    Name(#[from] NameError),
-    #[error("palette error: {0}")]
-    Swatch(#[from] SwatchError),
-    #[error("role error: {0}")]
-    Role(#[from] RoleError),
-    #[error("error processing template: {0}")]
-    Template(#[source] anyhow::Error),
+
     #[error("manifest error: {0}")]
     Manifest(#[from] ManifestError),
+
+    #[error("scheme error: {0}")]
+    Scheme(#[from] SchemeError),
+
+    #[error("name validation error: {0}")]
+    Name(#[from] NameError),
+
+    #[error("palette error: {0}")]
+    Swatch(#[from] SwatchError),
+
+    #[error("role error: {0}")]
+    Role(#[from] RoleError),
+
+    #[error("error processing template: {0}")]
+    Template(#[source] anyhow::Error),
+
+    #[error("directive error: {0}")]
+    Directive(#[from] DirectiveError),
+
+    #[error("host error: {0}")]
+    Host(#[from] HostError),
+
     #[error("error rendering: {0}")]
     Rendering(#[source] anyhow::Error),
+
     #[error("upstream error: {0}")]
     Upstream(#[from] UpstreamError),
+
     #[error("file system error: {0}")]
     Io(#[from] io::Error),
+
     #[error("internal error in {module}: {reason}! this is a bug!")]
     InternalBug {
         module: &'static str,

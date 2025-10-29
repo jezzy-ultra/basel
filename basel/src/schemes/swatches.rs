@@ -13,20 +13,23 @@ use crate::output::{Ascii, Unicode};
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("hex parsing error: {0}")]
-    ParsingHex(#[from] ParseHexColorError),
     #[error(
         "{} fall back to the same ascii name `{ascii_name}`",
         format_names(display_names)
     )]
-    CollidingAsciiNames {
+    AsciiNameCollision {
         ascii_name: String,
         display_names: Vec<String>,
     },
+
     #[error("swatches {} differ only in case", format_names(names))]
-    CollidingNameCases { names: Vec<String> },
+    NameCaseCollision { names: Vec<String> },
+
     #[error("invalid toml structure for swatch `{name}`: {reason}")]
     InvalidTomlStructure { name: String, reason: String },
+
+    #[error("hex parsing error: {0}")]
+    ParsingHex(#[from] ParseHexColorError),
 }
 
 fn format_names(names: &[String]) -> String {
@@ -38,27 +41,27 @@ fn format_names(names: &[String]) -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct SwatchColor(HexDisplay);
+pub(crate) struct Color(HexDisplay);
 
-impl SwatchColor {
+impl Color {
     pub(crate) fn parse(s: &str) -> Result<Self> {
         s.parse()
     }
 }
 
-impl From<HexColor> for SwatchColor {
+impl From<HexColor> for Color {
     fn from(color: HexColor) -> Self {
         Self(HexDisplay::new(color).with_case(Case::Lower))
     }
 }
 
-impl From<HexDisplay> for SwatchColor {
+impl From<HexDisplay> for Color {
     fn from(display: HexDisplay) -> Self {
         Self(display.with_case(Case::Lower))
     }
 }
 
-impl FromStr for SwatchColor {
+impl FromStr for Color {
     type Err = crate::Error;
 
     fn from_str(s: &str) -> Result<Self> {
@@ -66,7 +69,7 @@ impl FromStr for SwatchColor {
     }
 }
 
-impl TryFrom<&str> for SwatchColor {
+impl TryFrom<&str> for Color {
     type Error = crate::Error;
 
     fn try_from(s: &str) -> Result<Self> {
@@ -78,7 +81,7 @@ impl TryFrom<&str> for SwatchColor {
     }
 }
 
-impl Serialize for SwatchColor {
+impl Serialize for Color {
     fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
     where
         S: Serializer,
@@ -87,7 +90,7 @@ impl Serialize for SwatchColor {
     }
 }
 
-impl<'de> Deserialize<'de> for SwatchColor {
+impl<'de> Deserialize<'de> for Color {
     fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -97,23 +100,23 @@ impl<'de> Deserialize<'de> for SwatchColor {
     }
 }
 
-pub(crate) type SwatchName = Validated<"swatch", Unicode>;
-pub(crate) type SwatchAsciiName = Validated<"swatch", Ascii>;
+pub(crate) type Name = Validated<"swatch", Unicode>;
+pub(crate) type AsciiName = Validated<"swatch", Ascii>;
 
 #[non_exhaustive]
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Swatch {
-    pub name: SwatchName,
-    pub color: SwatchColor,
-    pub ascii: SwatchAsciiName,
+    pub name: Name,
+    pub color: Color,
+    pub ascii: AsciiName,
 }
 
 impl Swatch {
     pub(crate) fn parse(display_key: &str, val: &toml::Value) -> Result<Self> {
-        let display_name = SwatchName::parse(display_key)?;
+        let display_name = Name::parse(display_key)?;
 
         if let Some(hex_str) = val.as_str() {
-            let hex = SwatchColor::try_from(hex_str)?;
+            let hex = Color::try_from(hex_str)?;
             Ok(Self {
                 name: display_name.clone(),
                 color: hex,
@@ -128,10 +131,10 @@ impl Swatch {
                 }
             })?;
 
-            let hex = SwatchColor::try_from(hex_str)?;
+            let hex = Color::try_from(hex_str)?;
 
             let ascii = if let Some(ascii_str) = table.get("ascii").and_then(|v| v.as_str()) {
-                SwatchAsciiName::parse(ascii_str)?
+                AsciiName::parse(ascii_str)?
             } else {
                 display_name.to_ascii()?
             };

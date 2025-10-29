@@ -1,138 +1,162 @@
-use std::collections::HashSet;
 use std::path::Path;
+use std::result::Result as StdResult;
 use std::sync::Arc;
 
-use anyhow::bail;
-use indexmap::IndexMap;
-use log::{debug, error};
+use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools as _;
 
 use self::DirectiveType::{Basel, Other};
+use crate::PathExt as _;
 use crate::output::{ColorStyle, Style, TextStyle};
-use crate::{Error, PathExt as _, Result};
 
-#[derive(Debug, Clone, PartialEq)]
+type Result<T> = StdResult<T, Error>;
 
-enum LineType {
-    Content,
-    Directive(DirectiveType),
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error("incomplete basel directive `{directive}` in `{path}`")]
+    Incomplete { directive: String, path: String },
+
+    #[error("unknown basel directive{} `{}` in `{path}`",
+    if .directives.len() > 1 { "s" } else { "" },
+format_list(.directives))]
+    Unknown {
+        directives: Vec<String>,
+        path: String,
+    },
+
+    #[error(
+        "invalid value `{value}` for directive `{directive}` in `{path}`: expected `true` or \
+         `false`"
+    )]
+    InvalidBool {
+        value: String,
+        directive: String,
+        path: String,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq)]
-
-enum DirectiveType {
-    Basel { key: String, val: String },
-    Other(String),
-}
-
-fn parse_style(raw: &IndexMap<String, String>, template_name: &str) -> Style {
-    let mut style = Style::default();
-
-    for (directive, val) in raw {
-        match directive.as_str() {
-            "render_swatch_names" => {
-                style.color = if parse_bool(directive, val, template_name) {
-                    ColorStyle::Name
-                } else {
-                    ColorStyle::Hex
-                };
-            }
-            "render_as_ascii" => {
-                style.text = if parse_bool(directive, val, template_name) {
-                    TextStyle::Ascii
-                } else {
-                    TextStyle::Unicode
-                };
-            }
-            _ => {
-                debug!(
-                    "ignoring unknown directive `{directive}` with value `{val}` in \
-                     `{template_name}`"
-                );
-            }
-        }
-    }
-
-    style
-}
-
-fn parse_bool(directive: &str, val: &str, template_name: &str) -> bool {
-    match val {
-        "true" => true,
-        "false" => false,
-        _ => {
-            error!(
-                "invalid value `{val}` for directive `{directive}` in {template_name}: expected \
-                 `true` or `false`, defaulting to false"
-            );
-
-            false
-        }
-    }
+fn format_list(directives: &[String]) -> String {
+    directives.iter().map(|d| format!("`{d}`")).join(", ")
 }
 
 #[non_exhaustive]
 #[derive(Debug)]
-
 pub(crate) struct Directives {
     pub style: Arc<Style>,
-    pub output_lines: HashSet<String>,
+    pub source: Option<String>,
+    pub passthrough: IndexSet<String>,
 }
 
-type Type = str;
-
 impl Directives {
-    fn matches_pattern(line: &str, patterns: &[Vec<String>]) -> bool {
-        patterns.iter().any(|p| {
-            p.iter()
-                .try_fold(0, |from, part| {
-                    line.get(from..)
-                        .and_then(|s| s.find(part))
-                        .map(|pos| from + pos + part.len())
-                })
-                .is_some()
-        })
+    pub(crate) fn from_template(
+        name: &str,
+        content: &str,
+        strip_patterns: &[Vec<String>],
+        path: &str,
+    ) -> Result<(Self, String)> {
+        let mut basel_raw = IndexMap::new();
+        let mut passthrough = IndexSet::new();
+        let mut content_lines = Vec::new();
+
+        for line in content.lines() {
+            let classified = Self::classify(line, strip_patterns, path)?;
+
+            match classified {
+                LineType::Directive(Basel { key, val }) => {
+                    basel_raw.insert(key, val);
+                }
+                LineType::Directive(Other(text)) => {
+                    passthrough.insert(Self::canonicalize(&text));
+                }
+                LineType::Content => {
+                    content_lines.push(line);
+                }
+            }
+        }
+
+        let style = Arc::new(Self::extract_style(&mut basel_raw, name)?);
+        let source = basel_raw.shift_remove("source");
+
+        // TODO: refactor into own function
+        if !basel_raw.is_empty() {
+            let unknown: Vec<_> = basel_raw.keys().map(|s| s.to_owned()).collect();
+
+            return Err(Error::Unknown {
+                directives: unknown,
+                path: path.to_owned(),
+            });
+        }
+
+        passthrough.sort_unstable();
+
+        let filtered = Self::trim_ends(&content_lines);
+
+        Ok((
+            Self {
+                style,
+                source,
+                passthrough,
+            },
+            filtered,
+        ))
     }
 
-    fn classify_line(
-        line: &str,
-        strip_patterns: &[Vec<String>],
-        file_path: &str,
-    ) -> anyhow::Result<LineType> {
+    pub(crate) fn make_header(&self, output_path: &Path) -> String {
+        let mut directives = self.passthrough.clone();
+
+        if output_path.is_toml() {
+            let format_disabled_str = "#:tombi format.disabled = true";
+
+            let canonical = Self::canonicalize(format_disabled_str);
+
+            if !directives
+                .iter()
+                .any(|d| Self::canonicalize(d) == canonical)
+            {
+                directives.insert(format_disabled_str.to_owned());
+            }
+        }
+
+        directives.sort_unstable();
+
+        if !directives.is_empty() {
+            format!("{}\n\n", directives.into_iter().join("\n"))
+        } else {
+            String::new()
+        }
+    }
+
+    fn classify(line: &str, strip_patterns: &[Vec<String>], path: &str) -> Result<LineType> {
         let trimmed = line.trim();
 
         if trimmed.is_empty() || trimmed.starts_with("##") || !trimmed.starts_with('#') {
             return Ok(LineType::Content);
         }
 
+        // TODO: support basel directives inside jinja comments
         if let Some(part) = trimmed.strip_prefix("#basel:") {
-            if let Some((key, val)) = part.trim().split_once('=') {
+            if let Some((k, v)) = part.trim().split_once('=') {
                 return Ok(LineType::Directive(Basel {
-                    key: key.trim().to_owned(),
-                    val: val.trim().to_owned(),
+                    key: k.trim().to_owned(),
+                    val: v.trim().to_owned(),
                 }));
             }
 
-            // TODO: add more help
-            bail!("incomplete basel directive in `{file_path}`: `{part}`")
+            return Err(Error::Incomplete {
+                directive: part.trim().to_owned(),
+                path: path.to_owned(),
+            });
         }
 
-        if trimmed.contains("tombi") {
-            eprintln!("[DEBUG] trimmed: {trimmed:?}");
-            eprintln!("[DEBUG] strip_patterns: {strip_patterns:?}");
-            eprintln!(
-                "[DEBUG] match result: {}",
-                Self::matches_pattern(trimmed, strip_patterns)
-            );
-        }
-
-        if Self::matches_pattern(trimmed, strip_patterns) {
+        if Self::matches(strip_patterns, trimmed) {
             return Ok(LineType::Directive(Other(trimmed.to_owned())));
         }
 
         Ok(LineType::Content)
     }
 
-    fn trim_file_ends(content: &[&Type]) -> String {
+    fn trim_ends(content: &[&str]) -> String {
         let Some(start) = content.iter().position(|l| !l.trim().is_empty()) else {
             return String::new();
         };
@@ -149,62 +173,6 @@ impl Directives {
         content[start..end].join("\n")
     }
 
-    fn from_template_internal(
-        content: &str,
-        strip_patterns: &[Vec<String>],
-        template_name: &str,
-        file_path: &str,
-    ) -> anyhow::Result<(Self, String)> {
-        let mut basel_raw = IndexMap::new();
-
-        let mut output_lines = HashSet::new();
-
-        let mut content_lines = Vec::new();
-
-        for line in content.lines() {
-            let classified = Self::classify_line(line, strip_patterns, file_path)?;
-
-            if line.contains("tombi") {
-                eprintln!("[DEBUG] line: {line:?}");
-                eprintln!("[DEBUG] classified as: {classified:?}");
-            }
-
-            match classified {
-                LineType::Directive(Basel { key, val }) => {
-                    basel_raw.insert(key, val);
-                }
-                LineType::Directive(Other(text)) => {
-                    output_lines.insert(Self::canonicalize(&text));
-                }
-                LineType::Content => {
-                    content_lines.push(line);
-                }
-            }
-        }
-
-        let filtered = Self::trim_file_ends(&content_lines);
-
-        let style = Arc::new(parse_style(&basel_raw, template_name));
-
-        Ok((
-            Self {
-                style,
-                output_lines,
-            },
-            filtered,
-        ))
-    }
-
-    pub(crate) fn from_template(
-        content: &str,
-        strip_patterns: &[Vec<String>],
-        template_name: &str,
-        file_path: &str,
-    ) -> Result<(Self, String)> {
-        Self::from_template_internal(content, strip_patterns, template_name, file_path)
-            .map_err(Error::template)
-    }
-
     fn canonicalize(directive: &str) -> String {
         directive
             .to_lowercase()
@@ -214,36 +182,61 @@ impl Directives {
             .join(" = ")
     }
 
-    pub(crate) fn make_header(&self, output_path: &Path) -> String {
-        eprintln!(
-            "[DEBUG] output_lines before make_header: {:?}",
-            self.output_lines
-        );
-        eprintln!("[DEBUG] output_path.is_toml(): {}", output_path.is_toml());
+    fn extract_style(raw: &mut IndexMap<String, String>, path: &str) -> Result<Style> {
+        let mut style = Style::default();
 
-        let mut directives = self.output_lines.clone();
+        if let Some(v) = raw.shift_remove("render_swatch_names") {
+            style.color = if Self::parse_bool("render_swatch_names", &v, path)? {
+                ColorStyle::Name
+            } else {
+                ColorStyle::Hex
+            };
+        }
 
-        if output_path.is_toml() {
-            let format_disabled_str = "#:tombi format.disabled = true";
-
-            let canonical = Self::canonicalize(format_disabled_str);
-
-            if !directives
-                .iter()
-                .any(|d| Self::canonicalize(d) == canonical)
-            {
-                directives.insert(format_disabled_str.to_owned());
+        if let Some(v) = raw.shift_remove("render_as_ascii") {
+            style.text = if Self::parse_bool("render_as_ascii", &v, path)? {
+                TextStyle::Ascii
+            } else {
+                TextStyle::Unicode
             }
         }
 
-        let mut header: Vec<_> = directives.into_iter().collect();
+        Ok(style)
+    }
 
-        header.sort();
-
-        if header.is_empty() {
-            String::new()
-        } else {
-            format!("{}\n\n", header.join("\n"))
+    fn parse_bool(directive: &str, value: &str, path: &str) -> Result<bool> {
+        match value {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            _ => Err(Error::InvalidBool {
+                value: value.to_owned(),
+                directive: directive.to_owned(),
+                path: path.to_owned(),
+            }),
         }
     }
+
+    fn matches(patterns: &[Vec<String>], line: &str) -> bool {
+        patterns.iter().any(|p| {
+            p.iter()
+                .try_fold(0, |from, part| {
+                    line.get(from..)
+                        .and_then(|s| s.find(part))
+                        .map(|pos| from + pos + part.len())
+                })
+                .is_some()
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum LineType {
+    Content,
+    Directive(DirectiveType),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DirectiveType {
+    Basel { key: String, val: String },
+    Other(String),
 }

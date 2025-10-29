@@ -5,10 +5,13 @@ use anyhow::Context as _;
 use indexmap::IndexMap;
 use walkdir::WalkDir;
 
-pub(crate) mod directives;
-
-pub(crate) use self::directives::Directives;
 use crate::{Config, Error, PathExt as _, Result};
+
+pub(crate) mod directives;
+pub(crate) mod hosts;
+
+pub(crate) use self::directives::{Directives, Error as DirectiveError};
+pub(crate) use self::hosts::{Error as HostError, Resolved as ResolvedHost};
 
 pub(crate) const SET_TEST_OBJECT: &str = "_set";
 pub(crate) const JINJA_TEMPLATE_SUFFIX: &str = ".jinja";
@@ -16,11 +19,66 @@ pub(crate) const SKIP_RENDERING_PREFIX: char = '_';
 
 #[derive(Debug)]
 pub(crate) struct Loader {
-    env: minijinja::Environment<'static>,
-    directives: IndexMap<String, Directives>,
+    pub env: minijinja::Environment<'static>,
+    pub hosts: Vec<ResolvedHost>,
+    pub directives: IndexMap<String, Directives>,
 }
 
 impl Loader {
+    pub(crate) fn init(config: &Config) -> Result<Self> {
+        Self::load(config)
+    }
+
+    pub(crate) fn with_directives(
+        &self,
+    ) -> anyhow::Result<IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)>> {
+        let mut map: IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)> = IndexMap::new();
+        for (name, t) in self.env.templates() {
+            let directives = self
+                .directives
+                .get(name)
+                .ok_or_else(|| Error::InternalBug {
+                    module: "templates",
+                    reason: format!(
+                        "template `{name}` in jinja env but missing from directives map"
+                    ),
+                })?;
+            map.insert(name, (t, directives));
+        }
+
+        Ok(map)
+    }
+
+    pub(crate) fn resolve_blob(&self, url: &str) -> Result<String> {
+        Ok(hosts::resolve_blob(url, &self.hosts)?)
+    }
+
+    fn load(config: &Config) -> Result<Self> {
+        let mut env = minijinja::Environment::new();
+
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::SemiStrict);
+        env.set_trim_blocks(true);
+        env.set_lstrip_blocks(true);
+
+        env.add_test("set", Self::create_set_test);
+
+        env.add_filter("code", |s: String| -> String { format!("`{s}`") });
+
+        let directives = Self::templates_with_directives(
+            &mut env,
+            &config.dirs.templates,
+            &config.strip_directives,
+        )?;
+
+        let hosts = hosts::resolve(&config.hosts)?;
+
+        Ok(Self {
+            env,
+            hosts,
+            directives,
+        })
+    }
+
     fn create_set_test(
         state: &minijinja::State<'_, '_>,
         value: &minijinja::Value,
@@ -43,6 +101,7 @@ impl Loader {
                         }
                     }
                 }
+
                 Ok(false)
             }
             None => Err(minijinja::Error::new(
@@ -52,11 +111,11 @@ impl Loader {
         }
     }
 
-    fn load_templates_and_directives(
+    fn templates_with_directives(
         env: &mut minijinja::Environment<'static>,
         dir: &str,
         strip_patterns: &[Vec<String>],
-    ) -> anyhow::Result<IndexMap<String, Directives>> {
+    ) -> Result<IndexMap<String, Directives>> {
         let mut directives_map = IndexMap::new();
 
         for entry in WalkDir::new(dir).into_iter().filter_map(StdResult::ok) {
@@ -70,73 +129,31 @@ impl Loader {
                             "stripping directory prefix from template path `{}`",
                             path.display()
                         )
-                    })?
+                    })
+                    .map_err(Error::template)?
                     .to_string_lossy()
                     .replace('\\', "/");
 
                 let raw_src = fs::read_to_string(path)
-                    .with_context(|| format!("reading template `{}`", path.display()))?;
+                    .with_context(|| format!("reading template `{}`", path.display()))
+                    .map_err(Error::template)?;
 
                 let (directives, filtered) = Directives::from_template(
+                    &name,
                     &raw_src,
                     strip_patterns,
-                    &name,
                     path.to_string_lossy().as_str(),
                 )
-                .with_context(|| format!("parsing directives in template `{}`", path.display()))?;
+                .map_err(Error::Directive)?;
 
                 directives_map.insert(name.clone(), directives);
 
                 env.add_template_owned(name.clone(), filtered)
-                    .with_context(|| format!("compiling template `{name}`"))?;
+                    .with_context(|| format!("compiling template `{name}`"))
+                    .map_err(Error::template)?;
             }
         }
 
         Ok(directives_map)
-    }
-
-    fn new_internal(config: &Config) -> anyhow::Result<Self> {
-        let mut env = minijinja::Environment::new();
-
-        env.set_undefined_behavior(minijinja::UndefinedBehavior::SemiStrict);
-        env.set_trim_blocks(true);
-        env.set_lstrip_blocks(true);
-
-        env.add_test("set", Self::create_set_test);
-
-        env.add_filter("code", |s: String| -> String { format!("`{s}`") });
-
-        let directives = Self::load_templates_and_directives(
-            &mut env,
-            &config.dirs.templates,
-            &config.strip_directives,
-        )?;
-
-        Ok(Self { env, directives })
-    }
-
-    pub(crate) fn new(config: &Config) -> Result<Self> {
-        Self::new_internal(config).map_err(Error::template)
-    }
-
-    pub(crate) fn with_directives(
-        &self,
-    ) -> anyhow::Result<IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)>> {
-        let mut templates: IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)> =
-            IndexMap::new();
-        for (name, t) in self.env.templates() {
-            let directives = self
-                .directives
-                .get(name)
-                .ok_or_else(|| Error::InternalBug {
-                    module: "templates",
-                    reason: format!(
-                        "template `{name}` in jinja env but missing from directives map"
-                    ),
-                })?;
-            templates.insert(name, (t, directives));
-        }
-
-        Ok(templates)
     }
 }

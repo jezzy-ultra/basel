@@ -5,11 +5,14 @@ members = [
   "simple-palettes",
   "tools/cargo-bin",
 ]
+default-members = [
+  "basel",
+]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-description = "full-fat color scheme engine. write once, theme everything."
+description = "full-fat color scheme transformer. write once, theme everything."
 readme = "README.md"
 repository = "https://github.com/jezzy-ultra/basel"
 license = "GPLv3"
@@ -232,6 +235,8 @@ cargo-edit.bins = [
   "cargo-add",
 ]
 cargo-edit.version = "^0.13"
+cargo-modules.bins = ["cargo-modules"]
+cargo-modules.version = "^0.25"
 dioxus-cli.bins = ["dx"]
 dioxus-cli.version = "0.7.0-rc.2"
 dprint.version = "^0.50"

@@ -9,11 +9,11 @@ use crate::output::WriteMode;
 use crate::templates::Loader;
 use crate::{Result, config, render, schemes};
 
+// TODO: better documentation
+// TODO: add `prune` flag
 #[expect(clippy::struct_excessive_bools, reason = "cli args")]
 #[derive(Debug, Clone, Parser)]
 #[command(name = "basel", version, about, long_about = None)]
-// TODO: better documentation
-// TODO: add `prune` flag
 struct Args {
     /// Output more info per invocation (-v, -vv, -vvv)
     #[arg(short, long, action = ArgAction::Count)]
@@ -75,8 +75,8 @@ pub fn run() -> Result<()> {
 
     let config = config::load()?;
 
-    let templates = Loader::new(&config)?;
-    let schemes = schemes::load::all(&config.dirs.schemes)?;
+    let templates = Loader::init(&config)?;
+    let schemes = schemes::load_all(&config.dirs.schemes)?;
 
     if cli.clean {
         let render_dir = Path::new(&config.dirs.render);

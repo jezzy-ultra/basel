@@ -5,23 +5,54 @@ use anyhow::Context as _;
 use indexmap::IndexMap;
 use log::{debug, info, warn};
 
-use crate::output::upstream::Special;
-use crate::output::{Decision, GitCache, GitInfo, WriteMode, format, strategy, upstream};
+use crate::output::upstream::{Cache, Special};
+use crate::output::{Decision, Upstream, WriteMode, format, strategy};
 use crate::templates::{
-    Directives, JINJA_TEMPLATE_SUFFIX, Loader, SET_TEST_OBJECT, SKIP_RENDERING_PREFIX,
+    Directives, JINJA_TEMPLATE_SUFFIX, Loader, ResolvedHost, SET_TEST_OBJECT,
+    SKIP_RENDERING_PREFIX, hosts,
 };
 use crate::{Config, Error, Result, Scheme};
 
 mod context;
-mod manifest;
+mod index;
 mod objects;
 
-pub(crate) use self::manifest::{Error as ManifestError, Manifest};
+use self::index::Index;
 use self::objects::Color;
 
 const SCHEME_MARKER: &str = "SCHEME";
 const SWATCH_MARKER: &str = "SWATCH";
 const SWATCH_VARIABLE: &str = "swatch";
+
+#[non_exhaustive]
+#[derive(Debug)]
+pub(crate) struct Session {
+    pub index: Index,
+    pub hosts: Vec<ResolvedHost>,
+    pub git_cache: Cache,
+    pub write_mode: WriteMode,
+    pub dry_run: bool,
+}
+
+impl Session {
+    fn new(hosts: Vec<ResolvedHost>, write_mode: WriteMode, dry_run: bool) -> Result<Self> {
+        Ok(Self {
+            index: Index::load_or_create()?,
+            hosts,
+            git_cache: Cache::new(),
+            write_mode,
+            dry_run,
+        })
+    }
+
+    fn save(self) -> Result<()> {
+        if !self.dry_run {
+            self.index.save()?;
+        }
+
+        Ok(())
+    }
+}
 
 fn uses_swatch_iteration(template_name: &str) -> bool {
     template_name.contains(SWATCH_MARKER)
@@ -82,39 +113,23 @@ fn strip_prefix(path: &Path, prefix: &Path, context: &str) -> Option<PathBuf> {
 fn git_info_with(
     target_path: &Path,
     context: &str,
-    git_cache: &mut GitCache,
-) -> Option<(GitInfo, PathBuf)> {
+    git_cache: &mut Cache,
+) -> Option<(Upstream, PathBuf)> {
     let git_info = git_cache.get_or_detect(target_path)?;
 
     let rel_path = strip_prefix(
         target_path,
-        git_info.root(),
+        &git_info.root,
         &format!("{context}... path not under repo root"),
     )?;
 
     Some((git_info, rel_path))
 }
 
-fn resolve_with_repo_path(
-    repo_path: &Path,
-    scheme_name: &str,
-    render_dir: &str,
-    render_path: &Path,
-    git_cache: &mut GitCache,
-) -> Option<(GitInfo, PathBuf)> {
-    let prefix = Path::new(render_dir).join(scheme_name);
-
-    let rel_path = strip_prefix(render_path, &prefix, "configuring repo_path mode")?;
-
-    let target_path = repo_path.join(&rel_path);
-
-    git_info_with(&target_path, "configuring repo_path mode", git_cache)
-}
-
 fn resolve_with_autodetect(
     render_path: &Path,
-    git_cache: &mut GitCache,
-) -> Option<(GitInfo, PathBuf)> {
+    git_cache: &mut Cache,
+) -> Option<(Upstream, PathBuf)> {
     let abs_path = render_path.canonicalize().ok().or_else(|| {
         warn!(
             "auto-detect mode... failed to canonicalize render path `{}`; file may not exist yet",
@@ -130,37 +145,30 @@ fn resolve_with_autodetect(
 fn build_upstream(
     scheme_name: &str,
     render_path: &Path,
-    git_cache: &mut GitCache,
+    session: &mut Session,
     config: &Config,
 ) -> Special {
-    let Some(upstream_cfg) = &config.upstream else {
+    let Some((git_info, path)) = resolve_with_autodetect(render_path, &mut session.git_cache)
+    else {
         return Special::default();
     };
 
-    let Some((git_info, rel_path)) = (if let Some(repo_path) = upstream_cfg.repo_path.as_deref() {
-        resolve_with_repo_path(
-            repo_path,
-            scheme_name,
-            &config.dirs.render,
-            render_path,
-            git_cache,
-        )
-    } else {
-        resolve_with_autodetect(render_path, git_cache)
-    }) else {
+    // investigate where replacing backslashes is needed here
+    let file_path = path.to_string_lossy().replace('\\', "/");
+
+    let branch = &git_info.branch;
+
+    let Ok(blob) = hosts::build_blob(&git_info.url, &file_path, branch, &session.hosts) else {
+        // FIXME: error handling
+        let host = git_info.url.host().unwrap_or("unknown");
+        warn!("failed to build blob url for domain `{host}`");
         return Special::default();
     };
 
-    let pattern_override = upstream_cfg.pattern.as_deref();
-
-    let branch_override = upstream_cfg.branch.as_deref();
-
-    let url = upstream::build_url(&git_info, &rel_path, pattern_override, branch_override);
-
-    let repo = upstream::extract_base_url(&url);
+    let repo = hosts::extract_repo_url(&blob).ok().flatten();
 
     Special {
-        upstream_file: Some(url),
+        upstream_file: Some(blob),
         upstream_repo: repo,
     }
 }
@@ -169,35 +177,6 @@ fn should_render(name: &str) -> bool {
     !name
         .split('/')
         .any(|p| p.starts_with(SKIP_RENDERING_PREFIX))
-}
-
-#[non_exhaustive]
-#[derive(Debug)]
-
-pub(crate) struct Session {
-    pub manifest: Manifest,
-    pub git_cache: GitCache,
-    pub write_mode: WriteMode,
-    pub dry_run: bool,
-}
-
-impl Session {
-    fn new(write_mode: WriteMode, dry_run: bool) -> Result<Self> {
-        Ok(Self {
-            manifest: Manifest::load_or_create()?,
-            git_cache: GitCache::new(),
-            write_mode,
-            dry_run,
-        })
-    }
-
-    fn save(self) -> Result<()> {
-        if !self.dry_run {
-            self.manifest.save()?;
-        }
-
-        Ok(())
-    }
 }
 
 fn prepare(
@@ -267,9 +246,9 @@ fn execute(
                 fs::write(path, output)
                     .with_context(|| format!("writing file `{}`", path.display()))?;
 
-                let entry = Manifest::make_entry(path.to_path_buf(), template, scheme, output)?;
+                let entry = Index::create_entry(path, template, scheme, output)?;
 
-                session.manifest.insert(entry);
+                session.index.insert(entry);
 
                 info!("generated `{}`", path.display());
 
@@ -295,7 +274,7 @@ fn write(
 ) -> anyhow::Result<()> {
     let scheme_name = scheme.name.as_str();
     let path = resolve_path(template_name, scheme_name, config, current_swatch)?;
-    let special = build_upstream(scheme_name, &path, &mut session.git_cache, config);
+    let special = build_upstream(scheme_name, &path, session, config);
 
     let output = prepare(
         &path,
@@ -307,7 +286,7 @@ fn write(
         current_swatch,
     )?;
 
-    let status = session.manifest.check_file(&path, scheme, template)?;
+    let status = session.index.check(&path, scheme, template)?;
     let decision = strategy::decide(status, session.write_mode);
 
     execute(decision, &path, &output, scheme, template, session)?;
@@ -369,16 +348,16 @@ fn apply_internal(
     Ok(())
 }
 
-pub(crate) fn scheme(
+pub(crate) fn all_with(
     scheme: &Scheme,
     templates: &Loader,
     config: &Config,
     session: &mut Session,
 ) -> Result<()> {
-    scheme_internal(scheme, templates, config, session).map_err(Error::rendering)
+    all_with_internal(scheme, templates, config, session).map_err(Error::rendering)
 }
 
-fn scheme_internal(
+fn all_with_internal(
     scheme: &Scheme,
     templates: &Loader,
     config: &Config,
@@ -419,13 +398,13 @@ fn all_internal(
     write_mode: WriteMode,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let mut ctx = Session::new(write_mode, dry_run)?;
+    let mut session = Session::new(templates.hosts.clone(), write_mode, dry_run)?;
 
     for scheme_ref in schemes.values() {
-        scheme(scheme_ref, templates, config, &mut ctx)?;
+        all_with(scheme_ref, templates, config, &mut session)?;
     }
 
-    ctx.save()?;
+    session.save()?;
 
     Ok(())
 }

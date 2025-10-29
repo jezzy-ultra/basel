@@ -1,1 +1,1 @@
-full-fat color scheme engine. write once, theme everything.
+full-fat color scheme transformer. write once, theme everything*.

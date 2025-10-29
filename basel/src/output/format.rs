@@ -87,7 +87,7 @@ fn toml_options() -> taplo::formatter::Options {
         reorder_keys: false,
         reorder_arrays: false,
         reorder_inline_tables: false,
-        allowed_blank_lines: 0,
+        allowed_blank_lines: 1,
         crlf: false,
     }
 }
@@ -125,8 +125,10 @@ fn markdown(path: &Path) -> anyhow::Result<bool> {
 }
 
 fn markdown_options<'a>() -> comrak::Options<'a> {
+    use comrak::options::{Extension, ListStyleType, Parse, Render};
+
     comrak::Options {
-        extension: comrak::ExtensionOptions {
+        extension: Extension {
             strikethrough: true,
             tagfilter: true,
             table: true,
@@ -154,24 +156,25 @@ fn markdown_options<'a>() -> comrak::Options<'a> {
             link_url_rewriter: None,
             cjk_friendly_emphasis: true,
         },
-        parse: comrak::ParseOptions {
+        parse: Parse {
             smart: true,
             default_info_string: None,
             relaxed_tasklist_matching: true,
+            tasklist_in_table: true,
             relaxed_autolinks: true,
             broken_link_callback: None,
+            ignore_setext: true,
         },
-        render: comrak::RenderOptions {
+        render: Render {
             hardbreaks: false,
             github_pre_lang: true,
             full_info_string: true,
             width: 80,
-            unsafe_: true,
+            r#unsafe: true,
             escape: true,
             sourcepos: false,
-            list_style: comrak::ListStyleType::Dash,
+            list_style: ListStyleType::Dash,
             escaped_char_spans: true,
-            ignore_setext: true,
             ignore_empty_links: true,
             gfm_quirks: false,
             prefer_fenced: true,
@@ -240,6 +243,8 @@ fn json(path: &Path, options: json5format::FormatOptions) -> anyhow::Result<bool
 }
 
 fn xml(path: &Path) -> anyhow::Result<bool> {
+    use quick_xml::events::Event;
+
     let content = fs::read_to_string(path)
         .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
 
@@ -253,7 +258,7 @@ fn xml(path: &Path) -> anyhow::Result<bool> {
 
     loop {
         match reader.read_event() {
-            Ok(quick_xml::events::Event::Eof) => break,
+            Ok(Event::Eof) => break,
             Ok(event) => {
                 writer
                     .write_event(event)

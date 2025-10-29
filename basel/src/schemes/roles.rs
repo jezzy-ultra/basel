@@ -6,9 +6,7 @@ use owo_colors::OwoColorize as _;
 use owo_colors::Stream::Stdout;
 use serde::Serialize;
 
-use super::swatches::SwatchName;
-
-pub(crate) const ROLE_VARIANT_SEPARATOR: char = '_';
+use super::swatches::Name as SwatchName;
 
 // TODO: consider using a macro to generate roles as enums?
 const ROLES: &[&str] = &[
@@ -136,15 +134,112 @@ const ROLES: &[&str] = &[
     "ansi.white_bright",
 ];
 
+const VARIANT_SEPARATOR: char = '_';
+
+type Result<T> = StdResult<T, Error>;
+
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("undefined role `{0}`")]
-    UndefinedRole(String),
-    #[error("circular role references: {}", format_circular_chain(.0))]
+    Undefined(String),
+
+    #[error("circular role reference: {}", format_circular_chain(.0))]
     CircularReference(Vec<String>),
+
     #[error("required role `{0}` missing")]
     MissingRequired(String),
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Kind {
+    Base(Name),
+    Optional { base: Name },
+}
+
+impl Kind {
+    pub(crate) const fn base(&self) -> &Name {
+        match self {
+            Kind::Base(name) => name,
+            Kind::Optional { base } => base,
+        }
+    }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Serialize)]
+pub(crate) enum Value {
+    Swatch(SwatchName),
+    Role(Name),
+}
+
+impl Value {
+    pub(crate) fn parse(val: &str) -> Result<Self> {
+        if let Some(swatch_name) = val.strip_prefix('$') {
+            let display_name = SwatchName::parse(swatch_name).map_err(|_err| {
+                Error::Undefined(format!("invalid swatch reference: `${swatch_name}`"))
+            })?;
+            Ok(Self::Swatch(display_name))
+        } else {
+            let role_name = val.parse()?;
+            Ok(Self::Role(role_name))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub(crate) struct Name(&'static str);
+
+impl Name {
+    #[expect(clippy::unreachable, reason = "guaranteed by role design")]
+    #[must_use]
+    pub(crate) fn classify(&self) -> Kind {
+        if is_base(self.as_str()) {
+            Kind::Base(*self)
+        } else {
+            let base_str = extract_base(self.as_str());
+            let base_role = ROLES
+                .iter()
+                .find(|&&role| role == base_str)
+                .copied()
+                .map_or_else(|| unreachable!("optional roles always have a base"), Self);
+
+            Kind::Optional { base: base_role }
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn as_str(&self) -> &str {
+        self.0
+    }
+}
+
+impl Display for Name {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for Name {
+    type Err = Error;
+
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        ROLES
+            .iter()
+            .find(|&&role| role == s)
+            .copied()
+            .map(Self)
+            .ok_or_else(|| Error::Undefined(s.to_owned()))
+    }
+}
+
+pub(crate) fn iter() -> impl Iterator<Item = Name> {
+    ROLES.iter().copied().map(Name)
+}
+
+pub(crate) fn base() -> impl Iterator<Item = Name> {
+    ROLES.iter().copied().filter(|&s| is_base(s)).map(Name)
 }
 
 fn format_circular_chain(roles: &[String]) -> String {
@@ -165,62 +260,8 @@ fn format_circular_chain(roles: &[String]) -> String {
         .join(" -> ")
 }
 
-pub(crate) type Result<T> = StdResult<T, Error>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-pub(crate) struct RoleName(&'static str);
-
-impl RoleName {
-    #[expect(clippy::unreachable, reason = "guaranteed by role design")]
-    #[must_use]
-    pub(crate) fn classify(&self) -> RoleKind {
-        if is_base(self.as_str()) {
-            RoleKind::Base
-        } else {
-            let base_str = extract_base(self.as_str());
-            let base_role = ROLES
-                .iter()
-                .find(|&&role| role == base_str)
-                .copied()
-                .map_or_else(|| unreachable!("optional roles always have a base"), Self);
-
-            RoleKind::Optional(Optional {
-                base: Base(base_role),
-            })
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn as_str(&self) -> &str {
-        self.0
-    }
-}
-
-impl FromStr for RoleName {
-    type Err = Error;
-
-    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
-        ROLES
-            .iter()
-            .find(|&&role| role == s)
-            .copied()
-            .map(Self)
-            .ok_or_else(|| Error::UndefinedRole(s.to_owned()))
-    }
-}
-
-impl Display for RoleName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", self.0)
-    }
-}
-
-pub(crate) fn iter() -> impl Iterator<Item = RoleName> {
-    ROLES.iter().copied().map(RoleName)
-}
-
 fn extract_base(role: &str) -> &str {
-    if let Some((base, _)) = role.rsplit_once(ROLE_VARIANT_SEPARATOR) {
+    if let Some((base, _)) = role.rsplit_once(VARIANT_SEPARATOR) {
         return base;
     }
 
@@ -229,60 +270,6 @@ fn extract_base(role: &str) -> &str {
 
 fn is_base(role: &str) -> bool {
     extract_base(role) == role
-}
-
-pub(crate) fn base() -> impl Iterator<Item = RoleName> {
-    ROLES.iter().copied().filter(|&s| is_base(s)).map(RoleName)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Base(RoleName);
-
-impl Base {
-    #[must_use]
-    const fn name(&self) -> &RoleName {
-        &self.0
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Optional {
-    base: Base,
-}
-
-impl Optional {
-    #[must_use]
-    pub(crate) const fn base(&self) -> &RoleName {
-        self.base.name()
-    }
-}
-
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum RoleKind {
-    Base,
-    Optional(Optional),
-}
-
-#[non_exhaustive]
-#[derive(Debug, Serialize)]
-pub(crate) enum RoleValue {
-    Swatch(SwatchName),
-    Role(RoleName),
-}
-
-impl RoleValue {
-    pub(crate) fn parse(val: &str) -> Result<Self> {
-        if let Some(swatch_name) = val.strip_prefix('$') {
-            let display_name = SwatchName::parse(swatch_name).map_err(|_err| {
-                Error::UndefinedRole(format!("invalid swatch reference: `${swatch_name}`"))
-            })?;
-            Ok(Self::Swatch(display_name))
-        } else {
-            let role_name = val.parse()?;
-            Ok(Self::Role(role_name))
-        }
-    }
 }
 
 #[cfg(test)]
@@ -305,7 +292,7 @@ mod tests {
     fn roles_are_valid() {
         let roles = iter()
             .map(|s| s.as_str().parse())
-            .collect::<Result<Vec<RoleName>>>()
+            .collect::<Result<Vec<Name>>>()
             .unwrap_or_else(|e| panic!("invalid `ROLE` name {e}"));
     }
 

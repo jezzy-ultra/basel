@@ -46,8 +46,7 @@ pub(crate) enum FileStatus {
     Tracked {
         file_exists: bool,
         user_modified: bool,
-        template_changed: bool,
-        scheme_changed: bool,
+        dependency_changed: bool,
     },
 }
 
@@ -80,8 +79,7 @@ pub(crate) const fn decide(status: FileStatus, mode: Write) -> Decision {
         (
             Tracked {
                 user_modified: false,
-                template_changed: false,
-                scheme_changed: false,
+                dependency_changed: false,
                 ..
             },
             _,

@@ -12,6 +12,7 @@ check-private-items = false
 enforce-iter-loop-reborrow = true
 enum-variant-name-threshold = 2
 excessive-nesting-threshold = 6
+inherent-impl-lint-scope = "file"
 lint-commented-code = true
 max-fn-params-bools = 1
 missing-docs-allow-unused = true
