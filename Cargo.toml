@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-  "basel",
-  "simple-palettes",
-  "tools/cargo-bin",
+  "crates/basel",
+  "crates/cargo-bin",
+  "crates/simple-palettes",
 ]
 default-members = [
-  "basel",
+  "crates/basel",
 ]
 
 [workspace.package]
@@ -31,6 +31,8 @@ categories = [
 ]
 
 [workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
 palette = { version = "0.7", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -227,16 +229,8 @@ missing_crate_level_docs = "warn"
 unescaped_backticks = "warn"
 
 [workspace.metadata.bin]
-cargo-binstall.version = "^1"
-cargo-edit.bins = [
-  "cargo-upgrade",
-  "cargo-set-version",
-  "cargo-rm",
-  "cargo-add",
-]
-cargo-edit.version = "^0.13"
-cargo-modules.bins = ["cargo-modules"]
-cargo-modules.version = "^0.25"
-dioxus-cli.bins = ["dx"]
-dioxus-cli.version = "0.7.0-rc.2"
-dprint.version = "^0.50"
+cargo-binstall = { version = "^1" }
+cargo-edit = { bins = ["cargo-upgrade", "cargo-set-version"], version = "^0.13" }
+cargo-modules = { bins = ["cargo-modules"], version = "^0.25" }
+dioxus-cli = { version = "0.7.0-rc.3", bins = ["dx"] }
+dprint = { version = "^0.50" }

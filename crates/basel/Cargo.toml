@@ -11,8 +11,8 @@ categories.workspace = true
 default-run = "basel"
 
 [dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+anyhow = { workspace = true }
+clap = { workspace = true }
 comrak = { version = "0.45", features = ["shortcodes"] }
 deunicode = "1"
 env_logger = "0.11"

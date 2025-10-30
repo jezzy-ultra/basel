@@ -1,0 +1,10 @@
+[package]
+name = "cargo-bin"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+cargo-run-bin = { version = "1", features = ["cli"] }
+clap.workspace = true
