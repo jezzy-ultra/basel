@@ -38,6 +38,7 @@
           linuxPackages = lib.optionals pkgs.stdenv.isLinux [
             pkgs.atk
             pkgs.cairo
+            pkgs.clang
             pkgs.fontconfig
             pkgs.freetype
             pkgs.fribidi
@@ -46,6 +47,8 @@
             pkgs.gtk3
             pkgs.harfbuzz
             pkgs.libsoup_3
+            pkgs.mold
+            pkgs.openssl
             pkgs.pango
             pkgs.pixman
             pkgs.wayland
@@ -59,6 +62,7 @@
             pkgs.xorg.libXi
             pkgs.xorg.libXrandr
             pkgs.xorg.libXrender
+            pkgs.zlib
           ];
 
           darwinPackages = lib.optionals pkgs.stdenv.isDarwin (
@@ -118,6 +122,7 @@
                   lib.makeLibraryPath [
                     pkgs.atk
                     pkgs.cairo
+                    pkgs.clang
                     pkgs.fontconfig
                     pkgs.freetype
                     pkgs.fribidi
@@ -126,6 +131,8 @@
                     pkgs.gtk3
                     pkgs.harfbuzz
                     pkgs.libsoup_3
+                    pkgs.mold
+                    pkgs.openssl
                     pkgs.pango
                     pkgs.pixman
                     pkgs.wayland
@@ -139,6 +146,7 @@
                     pkgs.xorg.libXi
                     pkgs.xorg.libXrandr
                     pkgs.xorg.libXrender
+                    pkgs.zlib
                   ]
                 }"
               ''}

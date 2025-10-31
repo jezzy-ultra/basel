@@ -5451,7 +5451,6 @@ dependencies = [
  "dioxus",
  "dioxus-primitives",
  "gloo-storage",
- "gloo-timers",
  "palette",
  "reqwest",
  "serde",

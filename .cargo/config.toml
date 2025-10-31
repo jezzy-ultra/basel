@@ -8,3 +8,7 @@ binstall = ["bin", "cargo-binstall"]
 modules = ["bin", "cargo-modules"]
 set-version = ["bin", "cargo-set-version"]
 upgrade = ["bin", "cargo-upgrade"]
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

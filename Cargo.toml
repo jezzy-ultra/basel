@@ -234,3 +234,18 @@ cargo-edit = { bins = ["cargo-upgrade", "cargo-set-version"], version = "^0.13" 
 cargo-modules = { bins = ["cargo-modules"], version = "^0.25" }
 dioxus-cli = { version = "0.7.0-rc.3", bins = ["dx"] }
 dprint = { version = "^0.50" }
+
+[profile.dev]
+debug = false
+
+[profile.dev.package."*"]
+opt-level = 1
+debug = false
+
+[profile.dev.build-override]
+opt-level = 3
+codegen-units = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
