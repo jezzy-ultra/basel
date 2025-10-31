@@ -1,6 +1,6 @@
 [package]
 name = "simple-palettes"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 description = "color picker palettes!!"
 readme = "README.md"
@@ -12,7 +12,7 @@ categories.workspace = true
 [dependencies]
 axum = { version = "0.8", features = ["macros"], optional = true }
 dioxus = { version = "0.7.0-rc.3", features = ["router"] }
-dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0" }
+# dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0" }
 gloo-storage = "0.3"
 palette.workspace = true
 reqwest = { version = "0.12", features = ["json"] }
@@ -28,8 +28,6 @@ web-sys = { version = "0.3", features = [
 
 [features]
 default = []
-desktop = ["dioxus/desktop"]
-mobile = ["dioxus/mobile"]
 server = ["dep:axum", "dep:tokio", "dioxus/fullstack", "dioxus/server"]
 web = ["dioxus/fullstack", "dioxus/web"]
 
