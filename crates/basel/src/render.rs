@@ -226,7 +226,7 @@ fn execute(
         // TODO: add interactive mode (possibly as default behavior?)
         Decision::Conflict => {
             warn!(
-                "conflict: `{}` (user-modified, use `-f`/`--force` to overwrite)",
+                "conflict: `{}` (last modified by user; use `--force` to overwrite)",
                 path.display()
             );
         }

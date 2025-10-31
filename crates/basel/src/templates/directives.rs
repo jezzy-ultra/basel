@@ -80,7 +80,7 @@ impl Directives {
 
         // TODO: refactor into own function
         if !basel_raw.is_empty() {
-            let unknown: Vec<_> = basel_raw.keys().map(|s| s.to_owned()).collect();
+            let unknown: Vec<_> = basel_raw.keys().map(ToOwned::to_owned).collect();
 
             return Err(Error::Unknown {
                 directives: unknown,
@@ -120,10 +120,10 @@ impl Directives {
 
         directives.sort_unstable();
 
-        if !directives.is_empty() {
-            format!("{}\n\n", directives.into_iter().join("\n"))
-        } else {
+        if directives.is_empty() {
             String::new()
+        } else {
+            format!("{}\n\n", directives.into_iter().join("\n"))
         }
     }
 

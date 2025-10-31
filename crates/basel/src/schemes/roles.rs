@@ -161,8 +161,8 @@ pub(crate) enum Kind {
 impl Kind {
     pub(crate) const fn base(&self) -> &Name {
         match self {
-            Kind::Base(name) => name,
-            Kind::Optional { base } => base,
+            Self::Base(name) => name,
+            Self::Optional { base } => base,
         }
     }
 }

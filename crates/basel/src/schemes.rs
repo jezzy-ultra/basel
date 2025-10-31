@@ -9,7 +9,7 @@ use walkdir::WalkDir;
 use self::names::Validated;
 use self::roles::Value as RoleValue;
 use crate::Result;
-use crate::extensions::PathExt;
+use crate::extensions::PathExt as _;
 use crate::output::{Ascii, Unicode};
 
 pub(crate) mod names;
