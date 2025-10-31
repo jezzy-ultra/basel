@@ -4,6 +4,9 @@
   - [ ] make `themes/cutiepro` cutiepro's canonical _theme source_
     - [ ] publish to github.com/cutiepro/* as read-only destinations
 
+- [ ] `rev` to `ref` and `domain` to `host`, so `Host` should probably go back to `Provider` all-around
+- [ ] optimize `flake.nix`
+- [ ] consider if host/provider matching with both `globset` and `regex` should be refactored and if it should use a different strategy
 - [ ] should `hosts.rs` be in `templates`?
 - [ ] move `render/context.rs` back to `schemes`?
 - [ ] investigate `biome` (I think?) formatting suckily
