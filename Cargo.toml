@@ -230,10 +230,11 @@ unescaped_backticks = "warn"
 
 [workspace.metadata.bin]
 cargo-binstall = { version = "^1" }
-cargo-edit = { bins = ["cargo-upgrade", "cargo-set-version"], version = "^0.13" }
-cargo-modules = { bins = ["cargo-modules"], version = "^0.25" }
-dioxus-cli = { version = "0.7.0-rc.3", bins = ["dx"] }
+cargo-edit = { version = "^0.13", bins = ["cargo-upgrade", "cargo-set-version"] }
+cargo-modules = { version = "^0.25", bins = ["cargo-modules"] }
+dioxus-cli = { version = "^0.7", bins = ["dx"] }
 dprint = { version = "^0.50" }
+sccache = { version = "^0.12" }
 
 [profile.dev]
 debug = false

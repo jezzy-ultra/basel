@@ -11,7 +11,7 @@ categories.workspace = true
 
 [dependencies]
 axum = { version = "0.8", features = ["macros"], optional = true }
-dioxus = { version = "0.7.0-rc.3", features = ["router"] }
+dioxus = { version = "0.7", features = ["router"] }
 # dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0" }
 gloo-storage = "0.3"
 palette.workspace = true
