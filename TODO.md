@@ -1,6 +1,7 @@
 - [ ] ADD DOCUMENTATION AND TESTS!!
+- [x] rename `basel` -> ~~`they-theme` ?~~ `theythemer`
 - [x] put all crates flatly into `crates`
-  - ~~[ ] refactor `tools/cargo-bin` to `crates/xtask`~~
+  - [x] refactor `tools/cargo-bin` to ~~`crates/xtask`~~ `crates/cargo-bin`
   - [ ] make `themes/cutiepro` cutiepro's canonical _theme source_?
     - [ ] publish to github.com/cutiepro/* as read-only destinations?
 
@@ -20,7 +21,7 @@
 - [ ] figure out how to refactor away the `*_internal` functions
 - [ ] add checking for invalid directories/templates within the `templates`
       directory when the `render` directory is `.`/root, things that would
-      clobber important files (`.basel`, `templates`)? this might not be
+      clobber important files (`.theythemer`, `templates`)? this might not be
       necessary
 - [ ] look into integrating `GitCache` with manifests
 - [ ] alias `-p`/`--preview` to `--dry`/`--dry-run`
@@ -44,10 +45,10 @@
       `use core::{...}` -> `use std::{...}` -> `use ...` -> `use crate::{...}`
       -> `mod` -> `use self::{...}` -> `pub mod ...` / `pub(crate) mod ...` ->
       `pub use::{...}` / `pub(crate) use::{...}`
-- [ ] make sure basel uses the workspace / repo / `basel.toml` root
+- [ ] make sure theythemer uses the workspace / repo / `theythemer.toml` root
 - [ ] invalidate manifest cache on config changes?
 - [x] fix `#:tombi format.disabled = true` being added twice
-- [x] nest basel modules, there are getting to be too many for a flat structure
+- [x] nest theythemer modules, there are getting to be too many for a flat structure
   - [x] increase encapsulation between (sub)modules
 - [ ] fix json formatting using trailing commas for vanilla json
 
@@ -65,7 +66,7 @@
 - [ ] print more logs by default
 - [ ] if an undefined role is used as a value in a scheme, ask the user if they
       meant to prefix it with a `$` in the error message
-- [ ] improve `basel.config` error handling
+- [ ] improve `theythemer.config` error handling
 - [x] ~~investigate whether it's a good idea that both `Error` and `RenderError`
       convert from `SchemeError` and `TemplateError`~~ refactored to use anyhow
       for these situations

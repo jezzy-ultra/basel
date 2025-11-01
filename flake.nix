@@ -40,7 +40,7 @@
         in
         {
           default = rustPlatform.buildRustPackage {
-            pname = "basel";
+            pname = "theythemer";
             version = workspace.version;
             src = lib.cleanSource ./.;
             cargoLock.lockFile = ./Cargo.lock;
@@ -62,7 +62,7 @@
               description = workspace.description;
               homepage = workspace.repository;
               license = workspace.license;
-              mainProgram = "basel";
+              mainProgram = "they";
               platforms = platforms.unix;
             };
           };
@@ -97,7 +97,7 @@
               ''}
 
                echo ""
-               echo "basel developer environment active"
+               echo "theythemer developer environment active"
                echo "rust: $(rustc --version)"
                echo "  on: ${system}"
                echo ""

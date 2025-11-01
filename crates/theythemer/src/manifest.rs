@@ -13,7 +13,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::output::FileStatus;
 
-const DIR: &str = ".basel";
+const DIR: &str = ".theythemer";
 
 pub(crate) type Result<T> = StdResult<T, Error>;
 

@@ -6,7 +6,7 @@
 #![allow(missing_docs, reason = "TODO: add docs")]
 #![allow(clippy::missing_errors_doc, reason = "TODO: add docs")]
 
-use basel::{Result, cli};
+use theythemer::{Result, cli};
 
 fn main() -> Result<()> {
     cli::run()

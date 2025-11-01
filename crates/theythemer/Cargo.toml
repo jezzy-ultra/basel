@@ -1,5 +1,5 @@
 [package]
-name = "basel"
+name = "theythemer"
 version.workspace = true
 edition.workspace = true
 description.workspace = true
@@ -8,7 +8,11 @@ repository.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
-default-run = "basel"
+default-run = "they"
+
+[[bin]]
+name = "they"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }

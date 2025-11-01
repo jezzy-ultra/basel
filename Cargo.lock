@@ -293,44 +293,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "basel"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "comrak",
- "deunicode",
- "env_logger",
- "git-url-parse",
- "git2",
- "globset",
- "hex_color",
- "indexmap",
- "indoc",
- "itertools 0.14.0",
- "json5format",
- "log",
- "minijinja",
- "owo-colors",
- "palette",
- "pretty_assertions",
- "quick-xml",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "shellexpand",
- "strum",
- "taplo",
- "tempfile",
- "thiserror 2.0.17",
- "toml 0.9.8",
- "unicode-normalization",
- "url",
- "walkdir",
-]
-
-[[package]]
 name = "beef"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4247,6 +4209,44 @@ name = "text-size"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f18aa187839b2bdb1ad2fa35ead8c4c2976b64e4363c386d45ac0f7ee85c9233"
+
+[[package]]
+name = "theythemer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "comrak",
+ "deunicode",
+ "env_logger",
+ "git-url-parse",
+ "git2",
+ "globset",
+ "hex_color",
+ "indexmap",
+ "indoc",
+ "itertools 0.14.0",
+ "json5format",
+ "log",
+ "minijinja",
+ "owo-colors",
+ "palette",
+ "pretty_assertions",
+ "quick-xml",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shellexpand",
+ "strum",
+ "taplo",
+ "tempfile",
+ "thiserror 2.0.17",
+ "toml 0.9.8",
+ "unicode-normalization",
+ "url",
+ "walkdir",
+]
 
 [[package]]
 name = "thiserror"

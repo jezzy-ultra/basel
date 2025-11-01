@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/basel",
   "crates/cargo-bin",
   "crates/simple-palettes",
+  "crates/theythemer",
 ]
 default-members = [
-  "crates/basel",
+  "crates/theythemer",
 ]
 
 [workspace.package]
@@ -14,8 +14,8 @@ version = "0.1.0"
 edition = "2024"
 description = "full-fat color scheme transformer. write once, theme everything."
 readme = "README.md"
-repository = "https://github.com/jezzy-ultra/basel"
-license = "GPLv3"
+repository = "https://github.com/jezzy-ultra/theythemer"
+license = "MIT"
 keywords = [
   "color",
   "colorscheme",

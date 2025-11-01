@@ -13,7 +13,7 @@ use crate::{Result, config, render, schemes};
 // TODO: add `prune` flag
 #[expect(clippy::struct_excessive_bools, reason = "cli args")]
 #[derive(Debug, Clone, Parser)]
-#[command(name = "basel", version, about, long_about = None)]
+#[command(name = "they", version, about, long_about = None)]
 struct Args {
     /// Output more info per invocation (-v, -vv, -vvv)
     #[arg(short, long, action = ArgAction::Count)]

@@ -55,7 +55,7 @@ impl Upstream {
 
             let name = remotes.get(0).ok_or(Error::NoRemote)?;
 
-            // TODO: add hint about setting branch in basel config
+            // TODO: add hint about setting branch in config
             info!("`origin` not found, defaulting to first found branch: `{name}`");
 
             repo.find_remote(name).map_err(|src| Error::FetchingUrl {

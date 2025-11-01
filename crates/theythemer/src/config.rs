@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use log::debug;
 use serde::Deserialize;
 
-const FILENAME: &str = "basel.toml";
+const FILENAME: &str = "theythemer.toml";
 
 type Result<T> = StdResult<T, Error>;
 

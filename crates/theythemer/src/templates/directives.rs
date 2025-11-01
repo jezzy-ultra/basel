@@ -5,7 +5,7 @@ use std::sync::Arc;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools as _;
 
-use self::DirectiveType::{Basel, Other};
+use self::DirectiveType::{Other, They};
 use crate::PathExt as _;
 use crate::output::{ColorStyle, Style, TextStyle};
 
@@ -14,10 +14,10 @@ type Result<T> = StdResult<T, Error>;
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("incomplete basel directive `{directive}` in `{path}`")]
+    #[error("incomplete `they` directive `{directive}` in `{path}`")]
     Incomplete { directive: String, path: String },
 
-    #[error("unknown basel directive{} `{}` in `{path}`",
+    #[error("unknown `they` directive{} `{}` in `{path}`",
     if .directives.len() > 1 { "s" } else { "" },
 format_list(.directives))]
     Unknown {
@@ -63,7 +63,7 @@ impl Directives {
             let classified = Self::classify(line, strip_patterns, path)?;
 
             match classified {
-                LineType::Directive(Basel { key, val }) => {
+                LineType::Directive(They { key, val }) => {
                     basel_raw.insert(key, val);
                 }
                 LineType::Directive(Other(text)) => {
@@ -134,10 +134,10 @@ impl Directives {
             return Ok(LineType::Content);
         }
 
-        // TODO: support basel directives inside jinja comments
-        if let Some(part) = trimmed.strip_prefix("#basel:") {
+        // TODO: support `they` directives inside jinja comments
+        if let Some(part) = trimmed.strip_prefix("#they:") {
             if let Some((k, v)) = part.trim().split_once('=') {
-                return Ok(LineType::Directive(Basel {
+                return Ok(LineType::Directive(They {
                     key: k.trim().to_owned(),
                     val: v.trim().to_owned(),
                 }));
@@ -237,6 +237,6 @@ enum LineType {
 
 #[derive(Debug, Clone, PartialEq)]
 enum DirectiveType {
-    Basel { key: String, val: String },
+    They { key: String, val: String },
     Other(String),
 }
