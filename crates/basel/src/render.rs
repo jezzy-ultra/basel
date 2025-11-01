@@ -246,13 +246,16 @@ fn execute(
                 fs::write(path, output)
                     .with_context(|| format!("writing file `{}`", path.display()))?;
 
-                let entry = Index::create_entry(path, template, scheme, output)?;
+                format(path)?;
+
+                let formatted = fs::read_to_string(path)
+                    .with_context(|| format!("reading file `{}` for hashing", path.display()))?;
+
+                let entry = Index::create_entry(path, template, scheme, &formatted)?;
 
                 session.index.insert(entry);
 
                 info!("generated `{}`", path.display());
-
-                format(path)?;
             }
         }
         _ => {
