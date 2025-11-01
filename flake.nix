@@ -2,6 +2,7 @@
   description = "full-fat color scheme engine. write once, theme everything.";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    crane.url = "github:ipetkov/crane";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -10,15 +11,17 @@
 
   outputs =
     {
+      self,
       nixpkgs,
       rust-overlay,
-      self,
+      crane,
     }:
     let
       inherit (nixpkgs) lib;
       eachSystem = lib.genAttrs lib.systems.flakeExposed;
       cargo = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       workspace = cargo.workspace.package;
+
       pkgsFor = eachSystem (
         system:
         import nixpkgs {
@@ -33,17 +36,14 @@
         let
           pkgs = pkgsFor.${system};
           rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-          rustPlatform = pkgs.makeRustPlatform {
-            cargo = rustToolchain;
-            rustc = rustToolchain;
-          };
-        in
-        {
-          default = rustPlatform.buildRustPackage {
+          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+
+          commonArgs = {
+            src = craneLib.cleanCargoSource ./.;
+            strictDeps = true;
+
             pname = "theythemer";
             version = workspace.version;
-            src = lib.cleanSource ./.;
-            cargoLock.lockFile = ./Cargo.lock;
 
             nativeBuildInputs = with pkgs; [
               clang
@@ -58,14 +58,26 @@
 
             RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
 
-            meta = with lib; {
-              description = workspace.description;
-              homepage = workspace.repository;
-              license = workspace.license;
-              mainProgram = "they";
-              platforms = platforms.unix;
-            };
+            # disable sccache in nix builds
+            CARGO_BUILD_RUSTC_WRAPPER = "";
           };
+
+          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        in
+        {
+          default = craneLib.buildPackage (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              meta = with lib; {
+                description = workspace.description;
+                homepage = workspace.repository;
+                license = workspace.license;
+                mainProgram = "they";
+                platforms = platforms.unix;
+              };
+            }
+          );
         }
       );
 

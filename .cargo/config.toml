@@ -4,7 +4,9 @@ install-they = ["install", "--path", "theythemer"]
 it = ["install-they"]
 m = ["modules"]
 u = ["upgrade"]
-binstall = ["bin", "cargo-binstall"]
 modules = ["bin", "cargo-modules"]
 set-version = ["bin", "cargo-set-version"]
 upgrade = ["bin", "cargo-upgrade"]
+
+[build]
+rustc-wrapper = "sccache"
