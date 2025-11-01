@@ -8,8 +8,8 @@ use log::{debug, info, warn};
 use crate::output::upstream::{Cache, Special};
 use crate::output::{Decision, Upstream, WriteMode, format, strategy};
 use crate::templates::{
-    Directives, JINJA_TEMPLATE_SUFFIX, Loader, ResolvedHost, SET_TEST_OBJECT,
-    SKIP_RENDERING_PREFIX, hosts,
+    Directives, JINJA_TEMPLATE_SUFFIX, Loader, ResolvedProvider, SET_TEST_OBJECT,
+    SKIP_RENDERING_PREFIX, providers,
 };
 use crate::{Config, Error, Result, Scheme};
 
@@ -28,17 +28,17 @@ const SWATCH_VARIABLE: &str = "swatch";
 #[derive(Debug)]
 pub(crate) struct Session {
     pub index: Index,
-    pub hosts: Vec<ResolvedHost>,
+    pub providers: Vec<ResolvedProvider>,
     pub git_cache: Cache,
     pub write_mode: WriteMode,
     pub dry_run: bool,
 }
 
 impl Session {
-    fn new(hosts: Vec<ResolvedHost>, write_mode: WriteMode, dry_run: bool) -> Result<Self> {
+    fn new(providers: Vec<ResolvedProvider>, write_mode: WriteMode, dry_run: bool) -> Result<Self> {
         Ok(Self {
             index: Index::load_or_create()?,
-            hosts,
+            providers,
             git_cache: Cache::new(),
             write_mode,
             dry_run,
@@ -158,14 +158,15 @@ fn build_upstream(
 
     let branch = &git_info.branch;
 
-    let Ok(blob) = hosts::build_blob(&git_info.url, &file_path, branch, &session.hosts) else {
+    let Ok(blob) = providers::build_blob(&git_info.url, &file_path, branch, &session.providers)
+    else {
         // FIXME: error handling
-        let host = git_info.url.host().unwrap_or("unknown");
-        warn!("failed to build blob url for domain `{host}`");
+        let provider = git_info.url.host().unwrap_or("unknown");
+        warn!("failed to build blob url for host `{provider}`");
         return Special::default();
     };
 
-    let repo = hosts::extract_repo_url(&blob).ok().flatten();
+    let repo = providers::extract_repo_url(&blob).ok().flatten();
 
     Special {
         upstream_file: Some(blob),
@@ -401,7 +402,7 @@ fn all_internal(
     write_mode: WriteMode,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let mut session = Session::new(templates.hosts.clone(), write_mode, dry_run)?;
+    let mut session = Session::new(templates.providers.clone(), write_mode, dry_run)?;
 
     for scheme_ref in schemes.values() {
         all_with(scheme_ref, templates, config, &mut session)?;

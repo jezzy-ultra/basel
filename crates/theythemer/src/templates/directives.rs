@@ -55,7 +55,7 @@ impl Directives {
         strip_patterns: &[Vec<String>],
         path: &str,
     ) -> Result<(Self, String)> {
-        let mut basel_raw = IndexMap::new();
+        let mut they = IndexMap::new();
         let mut passthrough = IndexSet::new();
         let mut content_lines = Vec::new();
 
@@ -64,7 +64,7 @@ impl Directives {
 
             match classified {
                 LineType::Directive(They { key, val }) => {
-                    basel_raw.insert(key, val);
+                    they.insert(key, val);
                 }
                 LineType::Directive(Other(text)) => {
                     passthrough.insert(Self::canonicalize(&text));
@@ -75,12 +75,12 @@ impl Directives {
             }
         }
 
-        let style = Arc::new(Self::extract_style(&mut basel_raw, name)?);
-        let source = basel_raw.shift_remove("source");
+        let style = Arc::new(Self::extract_style(&mut they, name)?);
+        let source = they.shift_remove("source");
 
         // TODO: refactor into own function
-        if !basel_raw.is_empty() {
-            let unknown: Vec<_> = basel_raw.keys().map(ToOwned::to_owned).collect();
+        if !they.is_empty() {
+            let unknown: Vec<_> = they.keys().map(ToOwned::to_owned).collect();
 
             return Err(Error::Unknown {
                 directives: unknown,
@@ -230,13 +230,13 @@ impl Directives {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum LineType {
-    Content,
-    Directive(DirectiveType),
-}
-
-#[derive(Debug, Clone, PartialEq)]
 enum DirectiveType {
     They { key: String, val: String },
     Other(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum LineType {
+    Content,
+    Directive(DirectiveType),
 }

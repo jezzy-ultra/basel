@@ -5,11 +5,13 @@
   - [ ] make `themes/cutiepro` cutiepro's canonical _theme source_?
     - [ ] publish to github.com/cutiepro/* as read-only destinations?
 
+- [ ] fix files being written to disk, then reread, formatted and written to
+      disk again during rendering
 - [ ] add catppuccin schemes, for testing
 - [ ] figure out how schemes/themes should actually be organized
 - [ ] see if `itertools` can be used in more places
 - [ ] replace `git2` with `gix`?
-- [ ] `rev` to `ref` and `domain` to `host`, so `Host` should probably go back
+- [x] `rev` to `ref` and `domain` to `host`, so `Host` should probably go back
       to `Provider` all-around
 - [ ] optimize `flake.nix`
 - [ ] consider if host/provider matching with both `globset` and `regex` should
@@ -48,7 +50,8 @@
 - [ ] make sure theythemer uses the workspace / repo / `theythemer.toml` root
 - [ ] invalidate manifest cache on config changes?
 - [x] fix `#:tombi format.disabled = true` being added twice
-- [x] nest theythemer modules, there are getting to be too many for a flat structure
+- [x] nest theythemer modules, there are getting to be too many for a flat
+      structure
   - [x] increase encapsulation between (sub)modules
 - [ ] fix json formatting using trailing commas for vanilla json
 

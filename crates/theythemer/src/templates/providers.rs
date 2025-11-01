@@ -6,60 +6,60 @@ use globset::{Glob, GlobMatcher};
 use regex::Regex;
 use url::Url;
 
-use crate::config::Host;
+use crate::config::Provider;
 
 type Result<T> = StdResult<T, Error>;
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("host `{domain}` missing required field `{field}`")]
-    MissingRequired { field: String, domain: String },
+    #[error("provider `{host}` missing required field `{field}`")]
+    MissingRequired { field: String, host: String },
 
     // TODO: improve error message
     #[error("url `{url}` doesn't match expected format")]
     UnrecognizedPattern { url: String },
 
-    #[error("no host found for `{domain}`")]
-    NoMatchingHost { domain: String },
+    #[error("no provider found for `{host}`")]
+    NoneFound { host: String },
 
-    #[error("no domain found in url `{url}`")]
-    NoDomain { url: String },
+    #[error("no host found in url `{url}`")]
+    Nohost { url: String },
 
     #[error("failed to parse url `{url}`: {src}")]
     ParsingUrl { url: String, src: url::ParseError },
 
-    #[error("error parsing pattern for host `{domain}`: {src}")]
-    ParsingGlob { domain: String, src: globset::Error },
+    #[error("error parsing pattern for provider `{host}`: {src}")]
+    ParsingGlob { host: String, src: globset::Error },
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct Resolved {
-    domain: String,
+    host: String,
     blob_path: String,
     raw_path: String,
     branch: Option<String>,
     matcher: GlobMatcher,
 }
 
-impl Host {
+impl Provider {
     fn resolve(self) -> Result<Resolved> {
-        let matcher = Glob::new(&self.domain)
+        let matcher = Glob::new(&self.host)
             .map_err(|src| Error::ParsingGlob {
-                domain: self.domain.clone(),
+                host: self.host.clone(),
                 src,
             })?
             .compile_matcher();
 
         Ok(Resolved {
-            domain: self.domain.clone(),
+            host: self.host.clone(),
             blob_path: self.blob_path.ok_or_else(|| Error::MissingRequired {
                 field: "blob_path".to_owned(),
-                domain: self.domain.clone(),
+                host: self.host.clone(),
             })?,
             raw_path: self.raw_path.ok_or_else(|| Error::MissingRequired {
                 field: "raw_path".to_owned(),
-                domain: self.domain.clone(),
+                host: self.host.clone(),
             })?,
             branch: self.branch,
             matcher,
@@ -69,22 +69,22 @@ impl Host {
 
 #[derive(Debug)]
 struct Components<'a> {
-    domain: &'a str,
+    host: &'a str,
     owner: &'a str,
     repo: &'a str,
-    rev: &'a str,
+    ref_: &'a str,
     file: &'a str,
 }
 
-pub(crate) fn resolve(merged: &[Host]) -> Result<Vec<Resolved>> {
+pub(crate) fn resolve(merged: &[Provider]) -> Result<Vec<Resolved>> {
     let mut resolved: Vec<Resolved> = merged
         .iter()
         .map(|h| h.clone().resolve())
         .collect::<Result<Vec<Resolved>>>()?;
 
     resolved.sort_by(|a, b| {
-        let a_spec = calculate_specificity(&a.domain);
-        let b_spec = calculate_specificity(&b.domain);
+        let a_spec = calculate_specificity(&a.host);
+        let b_spec = calculate_specificity(&b.host);
 
         b_spec.cmp(&a_spec)
     });
@@ -92,23 +92,23 @@ pub(crate) fn resolve(merged: &[Host]) -> Result<Vec<Resolved>> {
     Ok(resolved)
 }
 
-pub(crate) fn resolve_blob(url: &str, hosts: &[Resolved]) -> Result<String> {
+pub(crate) fn resolve_blob(url: &str, providers: &[Resolved]) -> Result<String> {
     let parsed = Url::parse(url).map_err(|src| Error::ParsingUrl {
         url: url.to_owned(),
         src,
     })?;
 
-    let domain = parsed.host_str().ok_or_else(|| Error::NoDomain {
+    let host = parsed.host_str().ok_or_else(|| Error::Nohost {
         url: url.to_owned(),
     })?;
 
-    let host = find_matching(domain, hosts).ok_or_else(|| Error::NoMatchingHost {
-        domain: domain.to_owned(),
+    let provider = find_matching(host, providers).ok_or_else(|| Error::NoneFound {
+        host: host.to_owned(),
     })?;
 
     let components = extract_components(&parsed, url)?;
 
-    let raw = apply(&host.raw_path, &components);
+    let raw = apply(&provider.raw_path, &components);
 
     Ok(format!("https://{raw}"))
 }
@@ -116,15 +116,15 @@ pub(crate) fn resolve_blob(url: &str, hosts: &[Resolved]) -> Result<String> {
 pub(crate) fn build_blob(
     url: &GitUrl,
     path: &str,
-    rev: &str,
-    hosts: &[Resolved],
+    ref_: &str,
+    providers: &[Resolved],
 ) -> Result<String> {
-    let domain = url.host().ok_or_else(|| Error::NoDomain {
+    let host = url.host().ok_or_else(|| Error::Nohost {
         url: url.to_string(),
     })?;
 
-    let host = find_matching(domain, hosts).ok_or_else(|| Error::NoMatchingHost {
-        domain: domain.to_owned(),
+    let resolved = find_matching(host, providers).ok_or_else(|| Error::NoneFound {
+        host: host.to_owned(),
     })?;
 
     let provider =
@@ -136,12 +136,12 @@ pub(crate) fn build_blob(
     let owner = provider.owner();
     let repo = provider.repo();
 
-    let blob = host
+    let blob = resolved
         .blob_path
-        .replace("{domain}", domain)
+        .replace("{host}", host)
         .replace("{owner}", owner)
         .replace("{repo}", repo)
-        .replace("{rev}", rev)
+        .replace("{ref}", ref_)
         .replace("{file}", path);
 
     Ok(format!("https://{blob}"))
@@ -157,7 +157,7 @@ pub(crate) fn extract_repo_url(blob: &str) -> Result<Option<String>> {
 
     Ok(Some(format!(
         "https://{}/{}/{}",
-        components.domain, components.owner, components.repo
+        components.host, components.owner, components.repo
     )))
 }
 
@@ -184,22 +184,22 @@ fn calculate_specificity(pattern: &str) -> (usize, usize, usize) {
     (labels, literals, wildcards)
 }
 
-fn find_matching<'a>(domain: &str, hosts: &'a [Resolved]) -> Option<&'a Resolved> {
-    for host in hosts {
-        if host.domain == domain {
-            return Some(host);
+fn find_matching<'a>(host: &str, providers: &'a [Resolved]) -> Option<&'a Resolved> {
+    for provider in providers {
+        if provider.host == host {
+            return Some(provider);
         }
     }
 
-    hosts.iter().find(|&host| host.matcher.is_match(domain))
+    providers.iter().find(|&p| p.matcher.is_match(host))
 }
 
 fn extract_components<'a>(url: &'a Url, original: &str) -> Result<Components<'a>> {
     let path = url.path();
 
-    // verify correctness and robustness
+    // TODO: verify correctness and robustness
     let re = Regex::new(
-        "^/(?P<owner>[^/]+)/(?P<repo>[^/]+)(?:/(?:-|src/branch))?/(?:blob|raw)/(?P<rev>[^/]+)/(?\
+        "^/(?P<owner>[^/]+)/(?P<repo>[^/]+)(?:/(?:-|src/branch))?/(?:blob|raw)/(?P<ref>[^/]+)/(?\
          P<file>.+)$",
     )
     .expect("regex should be valid");
@@ -211,7 +211,7 @@ fn extract_components<'a>(url: &'a Url, original: &str) -> Result<Components<'a>
         })?;
 
     Ok(Components {
-        domain: url.host_str().expect("already validated by regex").as_str(),
+        host: url.host_str().expect("already validated by regex").as_str(),
         owner: caps
             .name("owner")
             .expect("already validated by regex")
@@ -220,8 +220,8 @@ fn extract_components<'a>(url: &'a Url, original: &str) -> Result<Components<'a>
             .name("repo")
             .expect("already validated by regex")
             .as_str(),
-        rev: caps
-            .name("rev")
+        ref_: caps
+            .name("ref")
             .expect("already validated by regex")
             .as_str(),
         file: caps
@@ -233,9 +233,9 @@ fn extract_components<'a>(url: &'a Url, original: &str) -> Result<Components<'a>
 
 fn apply(pattern: &str, components: &Components<'_>) -> String {
     pattern
-        .replace("{domain}", components.domain)
+        .replace("{host}", components.host)
         .replace("{owner}", components.owner)
         .replace("{repo}", components.repo)
-        .replace("{rev}", components.rev)
+        .replace("{ref}", components.ref_)
         .replace("{file}", components.file)
 }

@@ -8,10 +8,10 @@ use walkdir::WalkDir;
 use crate::{Config, Error, PathExt as _, Result};
 
 pub(crate) mod directives;
-pub(crate) mod hosts;
+pub(crate) mod providers;
 
 pub(crate) use self::directives::{Directives, Error as DirectiveError};
-pub(crate) use self::hosts::{Error as HostError, Resolved as ResolvedHost};
+pub(crate) use self::providers::{Error as ProviderError, Resolved as ResolvedProvider};
 
 pub(crate) const SET_TEST_OBJECT: &str = "_set";
 pub(crate) const JINJA_TEMPLATE_SUFFIX: &str = ".jinja";
@@ -20,7 +20,7 @@ pub(crate) const SKIP_RENDERING_PREFIX: char = '_';
 #[derive(Debug)]
 pub(crate) struct Loader {
     pub env: minijinja::Environment<'static>,
-    pub hosts: Vec<ResolvedHost>,
+    pub providers: Vec<ResolvedProvider>,
     pub directives: IndexMap<String, Directives>,
 }
 
@@ -50,7 +50,7 @@ impl Loader {
     }
 
     pub(crate) fn resolve_blob(&self, url: &str) -> Result<String> {
-        Ok(hosts::resolve_blob(url, &self.hosts)?)
+        Ok(providers::resolve_blob(url, &self.providers)?)
     }
 
     fn load(config: &Config) -> Result<Self> {
@@ -70,11 +70,11 @@ impl Loader {
             &config.strip_directives,
         )?;
 
-        let hosts = hosts::resolve(&config.hosts)?;
+        let providers = providers::resolve(&config.providers)?;
 
         Ok(Self {
             env,
-            hosts,
+            providers,
             directives,
         })
     }

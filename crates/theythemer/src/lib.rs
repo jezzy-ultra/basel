@@ -36,7 +36,7 @@ pub(crate) use self::manifest::{Entry as ManifestEntry, Manifest};
 use self::output::UpstreamError;
 pub(crate) use self::schemes::Scheme;
 use self::schemes::{Error as SchemeError, NameError, RoleError, SwatchError};
-use self::templates::{DirectiveError, HostError};
+use self::templates::{DirectiveError, ProviderError};
 
 pub mod cli;
 pub mod config;
@@ -75,8 +75,8 @@ pub enum Error {
     #[error("directive error: {0}")]
     Directive(#[from] DirectiveError),
 
-    #[error("host error: {0}")]
-    Host(#[from] HostError),
+    #[error("git provider error: {0}")]
+    Provider(#[from] ProviderError),
 
     #[error("error rendering: {0}")]
     Rendering(#[source] anyhow::Error),

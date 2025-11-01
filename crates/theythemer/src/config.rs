@@ -45,8 +45,8 @@ pub struct Config {
     pub strip_directives: Vec<Vec<String>>,
     pub dirs: Dirs,
 
-    #[serde(rename(serialize = "host"))]
-    pub hosts: Vec<Host>,
+    #[serde(rename(serialize = "provider"))]
+    pub providers: Vec<Provider>,
 }
 
 impl Default for Config {
@@ -57,7 +57,7 @@ impl Default for Config {
             strip_directives: vec![vec!["#:tombi".to_owned()]],
 
             dirs: Dirs::default(),
-            hosts: default_hosts(),
+            providers: default_providers(),
         }
     }
 }
@@ -85,18 +85,18 @@ impl Default for Dirs {
 #[non_exhaustive]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Host {
-    pub domain: String,
+pub struct Provider {
+    pub host: String,
     pub blob_path: Option<String>,
     pub raw_path: Option<String>,
     pub branch: Option<String>,
 }
 
-impl Host {
+impl Provider {
     #[must_use]
     pub fn merge_with(&self, default: &Self) -> Self {
         Self {
-            domain: self.domain.clone(),
+            host: self.host.clone(),
             blob_path: self.blob_path.clone().or_else(|| default.blob_path.clone()),
             raw_path: self.raw_path.clone().or_else(|| default.raw_path.clone()),
             branch: self.branch.clone().or_else(|| default.branch.clone()),
@@ -128,57 +128,57 @@ pub(crate) fn load() -> Result<Config> {
     config.dirs.templates = expand_and_resolve(&config.dirs.templates, project_root)?;
     config.dirs.render = expand_and_resolve(&config.dirs.render, project_root)?;
 
-    config.hosts = merge_hosts_with_defaults(&config.hosts);
+    config.providers = merge_providers_with_defaults(&config.providers);
 
     Ok(config)
 }
 
-fn default_hosts() -> Vec<Host> {
+fn default_providers() -> Vec<Provider> {
     vec![
-        Host {
-            domain: "github.com".to_owned(),
-            blob_path: Some("{domain}/{owner}/{repo}/blob/{rev}/{file}".to_owned()),
-            raw_path: Some("raw.githubusercontent.com/{owner}/{repo}/{rev}/{file}".to_owned()),
+        Provider {
+            host: "github.com".to_owned(),
+            blob_path: Some("{host}/{owner}/{repo}/blob/{ref}/{file}".to_owned()),
+            raw_path: Some("raw.githubusercontent.com/{owner}/{repo}/{ref}/{file}".to_owned()),
             branch: None,
         },
-        Host {
-            domain: "gitlab.com".to_owned(),
-            blob_path: Some("{domain}/{owner}/{repo}/-/blob/{rev}/{file}".to_owned()),
-            raw_path: Some("{domain}/{owner}/{repo}/-/raw/{rev}/{file}".to_owned()),
+        Provider {
+            host: "gitlab.com".to_owned(),
+            blob_path: Some("{host}/{owner}/{repo}/-/blob/{ref}/{file}".to_owned()),
+            raw_path: Some("{host}/{owner}/{repo}/-/raw/{ref}/{file}".to_owned()),
             branch: None,
         },
-        Host {
-            domain: "codeberg.org".to_owned(),
-            blob_path: Some("{domain}/{owner}/{repo}/src/branch/{rev}/{file}".to_owned()),
-            raw_path: Some("{domain}/{owner}/{repo}/raw/branch/{rev}/{file}".to_owned()),
+        Provider {
+            host: "codeberg.org".to_owned(),
+            blob_path: Some("{host}/{owner}/{repo}/src/branch/{ref}/{file}".to_owned()),
+            raw_path: Some("{host}/{owner}/{repo}/raw/branch/{ref}/{file}".to_owned()),
             branch: None,
         },
-        Host {
-            domain: "bitbucket.org".to_owned(),
-            blob_path: Some("{domain}/{owner}/{repo}/src/{rev}/{file}".to_owned()),
-            raw_path: Some("{domain}/{owner}/{repo}/raw/{rev}/{file}".to_owned()),
+        Provider {
+            host: "bitbucket.org".to_owned(),
+            blob_path: Some("{host}/{owner}/{repo}/src/{ref}/{file}".to_owned()),
+            raw_path: Some("{host}/{owner}/{repo}/raw/{ref}/{file}".to_owned()),
             branch: None,
         },
     ]
 }
 
-fn merge_hosts_with_defaults(user_hosts: &[Host]) -> Vec<Host> {
-    let mut hosts: IndexMap<String, Host> = default_hosts()
+fn merge_providers_with_defaults(user_providers: &[Provider]) -> Vec<Provider> {
+    let mut providers: IndexMap<String, Provider> = default_providers()
         .into_iter()
-        .map(|h| (h.domain.clone(), h))
+        .map(|h| (h.host.clone(), h))
         .collect();
 
-    for user_host in user_hosts {
-        if let Some(default) = hosts.get(&user_host.domain) {
-            let merged = user_host.merge_with(default);
+    for user_provider in user_providers {
+        if let Some(default) = providers.get(&user_provider.host) {
+            let merged = user_provider.merge_with(default);
 
-            hosts.insert(merged.domain.clone(), merged);
+            providers.insert(merged.host.clone(), merged);
         } else {
-            hosts.insert(user_host.domain.clone(), user_host.clone());
+            providers.insert(user_provider.host.clone(), user_provider.clone());
         }
     }
 
-    hosts.into_values().collect()
+    providers.into_values().collect()
 }
 
 fn find_project_root(cwd: &Path) -> Result<PathBuf> {
