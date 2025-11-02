@@ -5,6 +5,10 @@
   - [ ] make `themes/cutiepro` cutiepro's canonical _theme source_?
     - [ ] publish to github.com/cutiepro/* as read-only destinations?
 
+- [ ] genericize the provider regex and use percent-encoding (and some sort of
+      template system?)
+  - [ ] consolidate `output/upstream.rs` and `templates/providers.rs` into
+        `upstream.rs`?
 - [ ] fix files being written to disk, then reread, formatted and written to
       disk again during rendering
 - [ ] add catppuccin schemes, for testing
@@ -13,10 +17,9 @@
 - [ ] replace `git2` with `gix`?
 - [x] `rev` to `ref` and `domain` to `host`, so `Host` should probably go back
       to `Provider` all-around
-- [ ] optimize `flake.nix`
-- [ ] consider if host/provider matching with both `globset` and `regex` should
-      be refactored and if it should use a different strategy
-- [ ] should `hosts.rs` be in `templates`?
+- [x] optimize `flake.nix`
+- [ ] ~~consider if host/provider matching with both `globset` and `regex`
+      should be refactored and if it should use a different strategy~~
 - [ ] move `render/context.rs` back to `schemes`?
 - [ ] investigate `biome` (I think?) formatting suckily
 - [ ] make file operations atomic?
@@ -33,7 +36,7 @@
 - [ ] add `prune` flag and implement checking for orphaned files
 - [ ] figure out strategy for the cli getting/using the default templates
 - [ ] add functionality for committing and pushing updates in port subrepos
-      automatically
+      automatically?
 - [ ] more comprehensive `dry_run` behavior
 - [ ] make jinja macro to generate palette table markdown (with a column for the
       roles assigned to each swatch)
