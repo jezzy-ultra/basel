@@ -1,3 +1,5 @@
+//! Semantic color definitions.
+
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::result::Result as StdResult;
 use std::str::FromStr;
