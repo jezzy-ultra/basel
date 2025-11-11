@@ -1,6 +1,6 @@
 [alias]
 bin = ["run", "--package", "cargo-bin", "--"]
-install-they = ["install", "--path", "crates/theythemer"]
+install-they = ["install", "--path", "."]
 it = ["install-they"]
 m = ["modules"]
 u = ["upgrade"]
