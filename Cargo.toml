@@ -229,6 +229,7 @@ missing_crate_level_docs = "warn"
 unescaped_backticks = "warn"
 
 [workspace.metadata.bin]
+cargo-binstall = { version = "^1" }
 cargo-edit = { version = "^0.13", bins = ["cargo-upgrade", "cargo-set-version"] }
 cargo-modules = { version = "^0.25", bins = ["cargo-modules"] }
 dioxus-cli = { version = "^0.7", bins = ["dx"] }
