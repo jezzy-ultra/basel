@@ -155,6 +155,7 @@ fn markdown_options<'a>() -> comrak::Options<'a> {
             image_url_rewriter: None,
             link_url_rewriter: None,
             cjk_friendly_emphasis: true,
+            subtext: true,
         },
         parse: Parse {
             smart: true,
