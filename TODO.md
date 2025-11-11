@@ -5,6 +5,8 @@
   - [ ] make `themes/cutiepro` cutiepro's canonical _theme source_?
     - [ ] publish to github.com/cutiepro/* as read-only destinations?
 
+- [ ] have meta ascii fields use the same smart object system as swatches, e.g.
+      `blurb_ascii` => `blurb.ascii`
 - [ ] genericize the provider regex and use percent-encoding (and some sort of
       template system?)
   - [ ] consolidate `output/upstream.rs` and `templates/providers.rs` into
@@ -15,9 +17,6 @@
 - [ ] figure out how schemes/themes should actually be organized
 - [ ] see if `itertools` can be used in more places
 - [ ] replace `git2` with `gix`?
-- [x] `rev` to `ref` and `domain` to `host`, so `Host` should probably go back
-      to `Provider` all-around
-- [x] optimize `flake.nix`
 - [ ] ~~consider if host/provider matching with both `globset` and `regex`
       should be refactored and if it should use a different strategy~~
 - [ ] move `render/context.rs` back to `schemes`?
@@ -52,11 +51,14 @@
       `pub use::{...}` / `pub(crate) use::{...}`
 - [ ] make sure theythemer uses the workspace / repo / `theythemer.toml` root
 - [ ] invalidate manifest cache on config changes?
+- [x] `rev` to `ref` and `domain` to `host`, so `Host` should probably go back
+      to `Provider` all-around
+- [x] optimize `flake.nix`
 - [x] fix `#:tombi format.disabled = true` being added twice
 - [x] nest theythemer modules, there are getting to be too many for a flat
       structure
   - [x] increase encapsulation between (sub)modules
-- [ ] fix json formatting using trailing commas for vanilla json
+- [x] fix json formatting using trailing commas for vanilla json
 
 # errors
 
