@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
+publish.workspace = true
 default-run = "they"
 
 [workspace]
@@ -18,7 +19,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 readme = "README.md"
 repository = "https://github.com/jezzy-ultra/theythemer"
@@ -36,6 +37,8 @@ categories = [
   "development-tools",
   "template-engine",
 ]
+# not ready for publishing yet
+publish = false
 
 [workspace.dependencies]
 anyhow = "1"

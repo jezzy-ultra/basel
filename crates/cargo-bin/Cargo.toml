@@ -2,6 +2,7 @@
 name = "cargo-bin"
 version.workspace = true
 edition.workspace = true
+# internal crate
 publish = false
 
 [dependencies]

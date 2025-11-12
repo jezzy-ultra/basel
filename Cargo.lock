@@ -404,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-bin"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "cargo-run-bin",
@@ -4212,7 +4212,7 @@ checksum = "f18aa187839b2bdb1ad2fa35ead8c4c2976b64e4363c386d45ac0f7ee85c9233"
 
 [[package]]
 name = "theythemer"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",

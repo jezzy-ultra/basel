@@ -8,6 +8,8 @@ repository.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
+# still in prototyping phase
+publish = false
 
 [dependencies]
 axum = { version = "0.8", features = ["macros"], optional = true }
