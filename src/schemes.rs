@@ -18,7 +18,7 @@ pub(crate) mod swatches;
 
 pub(crate) use self::names::Error as NameError;
 pub(crate) use self::roles::{Error as RoleError, Kind as RoleKind, Name as RoleName};
-pub(crate) use self::swatches::{Error as SwatchError, Swatch};
+pub(crate) use self::swatches::{Error as SwatchError, Name as SwatchName, Swatch};
 
 const MAX_META_FIELD_LENGTH: usize = 1000;
 

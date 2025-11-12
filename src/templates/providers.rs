@@ -129,7 +129,7 @@ pub(crate) fn build_blob(
 
     let provider =
         url.provider_info::<GenericProvider>()
-            .map_err(|_| Error::UnrecognizedPattern {
+            .map_err(|_src| Error::UnrecognizedPattern {
                 url: url.to_string(),
             })?;
 

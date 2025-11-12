@@ -8,9 +8,9 @@ use owo_colors::OwoColorize as _;
 use owo_colors::Stream::Stdout;
 use serde::Serialize;
 
-use super::swatches::Name as SwatchName;
+use super::SwatchName;
 
-// TODO: consider using a macro to generate roles as enums?
+// TODO: consider using a macro to generate roles as enum variants?
 const ROLES: &[&str] = &[
     "bg",
     "bg_alt",

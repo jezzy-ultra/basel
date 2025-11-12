@@ -2,7 +2,7 @@
 name = "theythemer"
 version.workspace = true
 edition.workspace = true
-description.workspace = true
+description = "full-fat color scheme transformer. write once, theme everything."
 readme.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -20,7 +20,6 @@ members = [
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-description = "full-fat color scheme transformer. write once, theme everything."
 readme = "README.md"
 repository = "https://github.com/jezzy-ultra/theythemer"
 license = "MIT"
