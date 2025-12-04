@@ -8,6 +8,7 @@
 
 use theymer::{Result, cli};
 
-fn main() -> Result<()> {
-    cli::run()
+#[tokio::main]
+async fn main() -> Result<()> {
+    cli::run().await
 }

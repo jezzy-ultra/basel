@@ -20,7 +20,7 @@ palette.workspace = true
 reqwest = { version = "0.12", features = ["json"] }
 serde.workspace = true
 serde_json.workspace = true
-tokio = { version = "1", features = ["full"], optional = true }
+tokio = { workspace = true }
 web-sys = { version = "0.3", features = [
   "DomRect",
   "HtmlElement",
@@ -30,7 +30,7 @@ web-sys = { version = "0.3", features = [
 
 [features]
 default = []
-server = ["dep:axum", "dep:tokio", "dioxus/fullstack", "dioxus/server"]
+server = ["dep:axum", "dioxus/fullstack", "dioxus/server"]
 web = ["dioxus/fullstack", "dioxus/web"]
 
 [lints]

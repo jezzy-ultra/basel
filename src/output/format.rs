@@ -1,12 +1,14 @@
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 use std::str::FromStr as _;
 
-use anyhow::Context as _;
+use anyhow::{Context as _, anyhow};
 use json5format::Json5Format;
 use log::{debug, info};
 use strum::EnumString;
+use tombi_config::{FormatOptions as TombiFormatOptions, TomlVersion as TombiTomlVersion};
+use tombi_formatter::Formatter as TombiFormatter;
+use tombi_schema_store::SchemaStore as TombiSchemaStore;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString)]
 #[strum(serialize_all = "lowercase")]
@@ -28,30 +30,42 @@ impl FileType {
     }
 }
 
-pub(crate) fn format(path: &Path) -> anyhow::Result<bool> {
+pub(crate) async fn format(content: &str, path: &Path) -> anyhow::Result<Option<String>> {
     let Some(supported_type) = FileType::from(path) else {
-        return Ok(false);
+        return Ok(None);
     };
 
-    match supported_type {
-        FileType::Json => json(path, json_format_options()),
-        FileType::Jsonc | FileType::Json5 => json(path, jsonc_json5_format_options()),
-        FileType::Md => markdown(path),
-        FileType::Toml => toml(path),
-        FileType::Xml | FileType::Svg => xml(path),
+    let formatted = match supported_type {
+        FileType::Json => json(content, json_format_options()),
+        FileType::Jsonc | FileType::Json5 => json(content, jsonc_json5_format_options()),
+        FileType::Md => markdown(content),
+        FileType::Toml => toml(content).await,
+        FileType::Xml | FileType::Svg => xml(content),
+    };
+
+    if formatted == content {
+        Ok(None)
+    } else {
+        Ok(Some(formatted))
     }
 }
 
-fn toml(path: &Path) -> anyhow::Result<bool> {
+async fn toml(path: &Path) -> anyhow::Result<bool> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
 
-    let options = toml_options();
-    let mut formatted = taplo::formatter::format(&content, options);
+    // FIXME: actually handle schemas
+    let schema_store = TombiSchemaStore::new();
 
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
+    let formatted = TombiFormatter::new(
+        TombiTomlVersion::default(),
+        &TombiFormatOptions::default(),
+        None,
+        &schema_store,
+    )
+    .format(&content)
+    .await
+    .map_err(|src| anyhow!("formatting toml file `{}`: {src:?}", path.display()))?;
 
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
@@ -64,31 +78,6 @@ fn toml(path: &Path) -> anyhow::Result<bool> {
         info!("formatted `{}`", path.display());
 
         Ok(true)
-    }
-}
-
-fn toml_options() -> taplo::formatter::Options {
-    taplo::formatter::Options {
-        align_entries: false,
-        align_comments: true,
-        align_single_comments: true,
-        array_trailing_comma: true,
-        array_auto_expand: true,
-        inline_table_expand: true,
-        array_auto_collapse: true,
-        compact_arrays: true,
-        compact_inline_tables: false,
-        compact_entries: false,
-        indent_tables: false,
-        column_width: 80,
-        indent_entries: false,
-        indent_string: "  ".into(),
-        trailing_newline: true,
-        reorder_keys: false,
-        reorder_arrays: false,
-        reorder_inline_tables: false,
-        allowed_blank_lines: 1,
-        crlf: false,
     }
 }
 
@@ -105,10 +94,6 @@ fn markdown(path: &Path) -> anyhow::Result<bool> {
     let mut formatted = String::new();
     comrak::format_commonmark(root, &options, &mut formatted)
         .with_context(|| format!("formatting markdown file `{}`", path.display()))?;
-
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
 
     if formatted == content {
         debug!("formatting unnecessary for `{}`", path.display());
@@ -190,6 +175,43 @@ fn markdown_options<'a>() -> comrak::Options<'a> {
     }
 }
 
+fn json(content: &str, options: json5format::FormatOptions) -> anyhow::Result<bool> {
+    let format = Json5Format::with_options(options)
+        .with_context(|| format!("creating json5 formatter for `{}`", content.display()))?;
+
+    let parsed =
+        json5format::ParsedDocument::from_str(&content, Some(content.display().to_string()))
+            .with_context(|| format!("parsing json file `{}`", content.display()))?;
+
+    let formatted_bytes = format
+        .to_utf8(&parsed)
+        .with_context(|| format!("formatting json file `{}`", content.display()))?;
+
+    let mut formatted = String::from_utf8(formatted_bytes).with_context(|| {
+        format!(
+            "converting formatted json to utf-8 for `{}`",
+            content.display()
+        )
+    })?;
+
+    if !formatted.ends_with('\n') {
+        formatted.push('\n');
+    }
+
+    if formatted == content {
+        debug!("formatting unnecessary for `{}`", content.display());
+
+        Ok(false)
+    } else {
+        fs::write(content, formatted)
+            .with_context(|| format!("writing formatted file `{}`", content.display()))?;
+
+        info!("formatted `{}`", content.display());
+
+        Ok(true)
+    }
+}
+
 fn json_format_options() -> json5format::FormatOptions {
     json5format::FormatOptions {
         indent_by: 2,
@@ -204,45 +226,6 @@ fn jsonc_json5_format_options() -> json5format::FormatOptions {
     json5format::FormatOptions {
         trailing_commas: true,
         ..json_format_options()
-    }
-}
-
-fn json(path: &Path, options: json5format::FormatOptions) -> anyhow::Result<bool> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
-
-    let format = Json5Format::with_options(options)
-        .with_context(|| format!("creating json5 formatter for `{}`", path.display()))?;
-
-    let parsed = json5format::ParsedDocument::from_str(&content, Some(path.display().to_string()))
-        .with_context(|| format!("parsing json file `{}`", path.display()))?;
-
-    let formatted_bytes = format
-        .to_utf8(&parsed)
-        .with_context(|| format!("formatting json file `{}`", path.display()))?;
-
-    let mut formatted = String::from_utf8(formatted_bytes).with_context(|| {
-        format!(
-            "converting formatted json to utf-8 for `{}`",
-            path.display()
-        )
-    })?;
-
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
-
-    if formatted == content {
-        debug!("formatting unnecessary for `{}`", path.display());
-
-        Ok(false)
-    } else {
-        fs::write(path, formatted)
-            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
-
-        info!("formatted `{}`", path.display());
-
-        Ok(true)
     }
 }
 

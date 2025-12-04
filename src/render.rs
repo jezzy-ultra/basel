@@ -215,7 +215,7 @@ fn prepare(
     Ok(format!("{header}{rendered}"))
 }
 
-fn execute(
+async fn execute(
     decision: Decision,
     path: &Path,
     output: &str,
@@ -247,7 +247,7 @@ fn execute(
                 fs::write(path, output)
                     .with_context(|| format!("writing file `{}`", path.display()))?;
 
-                format(path)?;
+                format(path).await?;
 
                 let formatted = fs::read_to_string(path)
                     .with_context(|| format!("reading file `{}` for hashing", path.display()))?;
@@ -267,7 +267,7 @@ fn execute(
     Ok(())
 }
 
-fn write(
+async fn write(
     scheme: &Scheme,
     template_name: &str,
     template: &minijinja::Template<'_, '_>,
@@ -293,12 +293,12 @@ fn write(
     let status = session.index.check(&path, scheme, template)?;
     let decision = strategy::decide(status, session.write_mode);
 
-    execute(decision, &path, &output, scheme, template, session)?;
+    execute(decision, &path, &output, scheme, template, session).await?;
 
     Ok(())
 }
 
-pub(crate) fn apply(
+pub(crate) async fn apply(
     scheme: &Scheme,
     template_name: &str,
     template: &minijinja::Template<'_, '_>,
@@ -307,10 +307,11 @@ pub(crate) fn apply(
     session: &mut Session,
 ) -> Result<()> {
     apply_internal(scheme, template_name, template, directives, config, session)
+        .await
         .map_err(Error::rendering)
 }
 
-fn apply_internal(
+async fn apply_internal(
     scheme: &Scheme,
     template_name: &str,
     template: &minijinja::Template<'_, '_>,
@@ -335,7 +336,8 @@ fn apply_internal(
                 config,
                 session,
                 Some(swatch.name.as_str()),
-            )?;
+            )
+            .await?;
         }
     } else {
         write(
@@ -346,22 +348,25 @@ fn apply_internal(
             config,
             session,
             None,
-        )?;
+        )
+        .await?;
     }
 
     Ok(())
 }
 
-pub(crate) fn all_with(
+pub(crate) async fn all_with(
     scheme: &Scheme,
     templates: &Loader,
     config: &Config,
     session: &mut Session,
 ) -> Result<()> {
-    all_with_internal(scheme, templates, config, session).map_err(Error::rendering)
+    all_with_internal(scheme, templates, config, session)
+        .await
+        .map_err(Error::rendering)
 }
 
-fn all_with_internal(
+async fn all_with_internal(
     scheme: &Scheme,
     templates: &Loader,
     config: &Config,
@@ -379,23 +384,26 @@ fn all_with_internal(
             directives,
             config,
             session,
-        )?;
+        )
+        .await?;
     }
 
     Ok(())
 }
 
-pub(crate) fn all(
+pub(crate) async fn all(
     templates: &Loader,
     schemes: &IndexMap<String, Scheme>,
     config: &Config,
     write_mode: WriteMode,
     dry_run: bool,
 ) -> Result<()> {
-    all_internal(templates, schemes, config, write_mode, dry_run).map_err(Error::rendering)
+    all_internal(templates, schemes, config, write_mode, dry_run)
+        .await
+        .map_err(Error::rendering)
 }
 
-fn all_internal(
+async fn all_internal(
     templates: &Loader,
     schemes: &IndexMap<String, Scheme>,
     config: &Config,
@@ -405,7 +413,7 @@ fn all_internal(
     let mut session = Session::new(templates.providers.clone(), write_mode, dry_run)?;
 
     for scheme_ref in schemes.values() {
-        all_with(scheme_ref, templates, config, &mut session)?;
+        let all_with = all_with(scheme_ref, templates, config, &mut session).await?;
     }
 
     session.save()?;

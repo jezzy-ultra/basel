@@ -20,10 +20,10 @@
     reason = "seems to be broken for `pub(crate)` errors"
 )]
 
-use std::io;
 use std::result::Result as StdResult;
 
 mod extensions;
+mod io;
 mod manifest;
 mod output;
 mod render;
@@ -85,7 +85,7 @@ pub enum Error {
     Upstream(#[from] UpstreamError),
 
     #[error("file system error: {0}")]
-    Io(#[from] io::Error),
+    Io(#[from] std::io::Error),
 
     #[error("internal error in {module}: {reason}! this is a bug!")]
     InternalBug {

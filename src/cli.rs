@@ -68,7 +68,7 @@ fn init_logger(verbosity: u8, quiet: bool) {
     LoggerBuilder::new().filter_level(level).init();
 }
 
-pub fn run() -> Result<()> {
+pub async fn run() -> Result<()> {
     let cli = Args::parse();
 
     init_logger(cli.verbose, cli.quiet);
@@ -90,7 +90,7 @@ pub fn run() -> Result<()> {
         }
     }
 
-    render::all(&templates, &schemes, &config, cli.write_mode(), cli.dry_run)?;
+    render::all(&templates, &schemes, &config, cli.write_mode(), cli.dry_run).await?;
 
     Ok(())
 }
