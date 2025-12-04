@@ -156,6 +156,7 @@ fn markdown_options<'a>() -> comrak::Options<'a> {
             link_url_rewriter: None,
             cjk_friendly_emphasis: true,
             subtext: true,
+            highlight: true,
         },
         parse: Parse {
             smart: true,
@@ -165,6 +166,8 @@ fn markdown_options<'a>() -> comrak::Options<'a> {
             relaxed_autolinks: true,
             broken_link_callback: None,
             ignore_setext: true,
+            leave_footnote_definitions: false,
+            escaped_char_spans: true,
         },
         render: Render {
             hardbreaks: false,
