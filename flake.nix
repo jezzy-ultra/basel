@@ -65,7 +65,7 @@
           // {
             inherit cargoArtifacts;
             meta = with lib; {
-              description = workspace.description;
+              description = cargo.package.description;
               homepage = workspace.repository;
               license = workspace.license;
               mainProgram = "they";
