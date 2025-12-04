@@ -13,6 +13,8 @@
         `upstream.rs`?
 - [ ] fix files being written to disk, then reread, formatted and written to
       disk again during rendering
+  - [ ] refactor loading to be more generic and atomic across the package
+    - [ ] and make it async / multi-threaded?
 - [ ] add catppuccin schemes, for testing
 - [ ] figure out how schemes/themes should actually be organized
 - [ ] see if `itertools` can be used in more places
