@@ -5,7 +5,7 @@ use std::sync::Arc;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools as _;
 
-use self::DirectiveType::{Other, They};
+use self::DirectiveType::{Other, Theymer};
 use crate::PathExt as _;
 use crate::output::{ColorStyle, Style, TextStyle};
 
@@ -14,12 +14,11 @@ type Result<T> = StdResult<T, Error>;
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("incomplete `they` directive `{directive}` in `{path}`")]
+    #[error("incomplete theymer directive `{directive}` in `{path}`")]
     Incomplete { directive: String, path: String },
 
-    #[error("unknown `they` directive{} `{}` in `{path}`",
-    if .directives.len() > 1 { "s" } else { "" },
-format_list(.directives))]
+    #[error("unknown theymer directive{} `{}` in `{path}`",
+    if .directives.len() > 1 { "s" } else { "" }, format_list(.directives))]
     Unknown {
         directives: Vec<String>,
         path: String,
@@ -55,7 +54,7 @@ impl Directives {
         strip_patterns: &[Vec<String>],
         path: &str,
     ) -> Result<(Self, String)> {
-        let mut they = IndexMap::new();
+        let mut theymer = IndexMap::new();
         let mut passthrough = IndexSet::new();
         let mut content_lines = Vec::new();
 
@@ -63,8 +62,8 @@ impl Directives {
             let classified = Self::classify(line, strip_patterns, path)?;
 
             match classified {
-                LineType::Directive(They { key, val }) => {
-                    they.insert(key, val);
+                LineType::Directive(Theymer { key, val }) => {
+                    theymer.insert(key, val);
                 }
                 LineType::Directive(Other(text)) => {
                     passthrough.insert(Self::canonicalize(&text));
@@ -75,12 +74,12 @@ impl Directives {
             }
         }
 
-        let style = Arc::new(Self::extract_style(&mut they, name)?);
-        let source = they.shift_remove("source");
+        let style = Arc::new(Self::extract_style(&mut theymer, name)?);
+        let source = theymer.shift_remove("source");
 
         // TODO: refactor into own function
-        if !they.is_empty() {
-            let unknown: Vec<_> = they.keys().map(ToOwned::to_owned).collect();
+        if !theymer.is_empty() {
+            let unknown: Vec<_> = theymer.keys().map(ToOwned::to_owned).collect();
 
             return Err(Error::Unknown {
                 directives: unknown,
@@ -135,9 +134,9 @@ impl Directives {
         }
 
         // TODO: support `they` directives inside jinja comments
-        if let Some(part) = trimmed.strip_prefix("#they:") {
+        if let Some(part) = trimmed.strip_prefix("#theymer:") {
             if let Some((k, v)) = part.trim().split_once('=') {
-                return Ok(LineType::Directive(They {
+                return Ok(LineType::Directive(Theymer {
                     key: k.trim().to_owned(),
                     val: v.trim().to_owned(),
                 }));
@@ -231,7 +230,7 @@ impl Directives {
 
 #[derive(Debug, Clone, PartialEq)]
 enum DirectiveType {
-    They { key: String, val: String },
+    Theymer { key: String, val: String },
     Other(String),
 }
 
