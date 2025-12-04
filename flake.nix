@@ -38,7 +38,7 @@
           src = craneLib.cleanCargoSource ./.;
           strictDeps = true;
 
-          pname = "theythemer";
+          pname = "theymer";
           version = workspace.version;
 
           nativeBuildInputs = with pkgs; [
@@ -103,7 +103,7 @@
             ''}
 
              echo ""
-             echo "theythemer developer environment active"
+             echo "theymer developer environment active"
              echo "rust: $(rustc --version)"
              echo "  on: ${system}"
              echo ""

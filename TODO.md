@@ -1,5 +1,5 @@
 - [ ] ADD DOCUMENTATION AND TESTS!!
-- [x] rename `basel` -> ~~`they-theme` ?~~ `theythemer`
+- [x] rename `basel` -> ~~`they-theme` ?~~ ~~`theythemer`~~ `theymer`
 - [x] put all crates flatly into `crates`
   - [x] refactor `tools/cargo-bin` to ~~`crates/xtask`~~ `crates/cargo-bin`
   - [ ] make `themes/cutiepro` cutiepro's canonical _theme source_?
@@ -27,7 +27,7 @@
 - [ ] figure out how to refactor away the `*_internal` functions
 - [ ] add checking for invalid directories/templates within the `templates`
       directory when the `render` directory is `.`/root, things that would
-      clobber important files (`.theythemer`, `templates`)? this might not be
+      clobber important files (`.theymer`, `templates`)? this might not be
       necessary
 - [ ] look into integrating `GitCache` with manifests
 - [ ] alias `-p`/`--preview` to `--dry`/`--dry-run`
@@ -51,13 +51,13 @@
       `use core::{...}` -> `use std::{...}` -> `use ...` -> `use crate::{...}`
       -> `mod` -> `use self::{...}` -> `pub mod ...` / `pub(crate) mod ...` ->
       `pub use::{...}` / `pub(crate) use::{...}`
-- [ ] make sure theythemer uses the workspace / repo / `theythemer.toml` root
+- [ ] make sure theymer uses the workspace / repo / `theymer.toml` root
 - [ ] invalidate manifest cache on config changes?
 - [x] `rev` to `ref` and `domain` to `host`, so `Host` should probably go back
       to `Provider` all-around
 - [x] optimize `flake.nix`
 - [x] fix `#:tombi format.disabled = true` being added twice
-- [x] nest theythemer modules, there are getting to be too many for a flat
+- [x] nest theymer modules, there are getting to be too many for a flat
       structure
   - [x] increase encapsulation between (sub)modules
 - [x] fix json formatting using trailing commas for vanilla json
@@ -76,7 +76,7 @@
 - [ ] print more logs by default
 - [ ] if an undefined role is used as a value in a scheme, ask the user if they
       meant to prefix it with a `$` in the error message
-- [ ] improve `theythemer.config` error handling
+- [ ] improve `theymer.config` error handling
 - [x] ~~investigate whether it's a good idea that both `Error` and `RenderError`
       convert from `SchemeError` and `TemplateError`~~ refactored to use anyhow
       for these situations
@@ -130,6 +130,7 @@
 # cutiepro
 
 - [ ] change `info` color to something less used?
+- [ ] differentiate column headers in Helix from normal foreground text
 - [ ] add four additional colors to the rainbow brackets for a total of 10
       levels
 - [x] make `creamsicle` slightly yellower (or `sand` slightly redder?)
