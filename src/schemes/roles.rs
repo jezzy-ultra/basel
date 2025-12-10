@@ -36,6 +36,11 @@
 //! background  #181716
 //! ```
 
+#![allow(
+    non_camel_case_types,
+    reason = "`define_roles` macro generates lowercase variants"
+)]
+
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::result::Result as StdResult;
 use std::str::FromStr;
@@ -46,131 +51,235 @@ use serde::{Deserialize, Serialize};
 
 use super::SwatchName;
 
-// TODO: consider using a macro to generate roles as enum variants?
-const ROLES: &[&str] = &[
+macro_rules! define_roles {
+    // parse group
+    (@parse
+        [$( $roles:tt )*]
+        [$( $groups:tt )*]
+        $group:ident { $( $group_roles:literal ),* $( , )? }
+        $( , $($rest:tt)* )?
+    ) => {
+        define_roles!(@parse
+            [$($roles)* $(concat!(stringify!($group), ".", $group_roles),)*]
+            [$($groups)* $group]
+            $($($rest)*)?
+        );
+    };
+
+    // parse role name
+    (@parse
+        [$( $roles:tt )*]
+        [$( $groups:tt )*]
+        $role:literal
+        $(, $($rest:tt)*)?
+    ) => {
+        define_roles!(@parse
+            [$($roles)* $role ,]
+            [$($groups)*]
+            $($($rest)*)?
+        );
+    };
+
+    // base case
+    (@parse
+        [$( $roles:tt )*]
+        [$( $groups:ident )*]
+    ) => {
+        const ROLES: &[&str] = &[
+            $($roles)*
+        ];
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub(crate) enum Group {
+            Root,
+            $($groups,)*
+        }
+
+        impl Name {
+            pub(crate) fn group(&self) -> Group {
+                match self.0 {
+                    $(
+                        s if s.starts_with(concat!(stringify!($groups), "."))
+                            => Group::$groups,
+                    )*
+                    _ => Group::Root,
+                }
+            }
+        }
+    };
+
+    // entry
+    ( $( $item:tt )* ) => {
+        define_roles!(@parse [] [] $($item)*);
+    };
+}
+
+define_roles! {
     "bg",
     "bg_alt",
+
     "fg",
     "fg_alt",
+
     "toolbar",
     "toolbar_popup",
     "toolbar_alt",
+
     "select",
     "select_2nd",
     "select_alt",
+
     "accent",
     "accent_2nd",
     "accent_separator",
     "accent_popup",
     "accent_linenum",
+
     "inactive",
     "focus",
+
     "guide",
     "guide_inlay",
     "guide_linenum",
     "guide_ruler",
     "guide_whitespace",
+
     "match",
     "error",
     "warning",
     "info",
     "hint",
-    "debug.active",
-    "debug.breakpoint",
-    "debug.frameline",
-    "mode.normal",
-    "mode.normal_2nd",
-    "mode.insert",
-    "mode.insert_2nd",
-    "mode.select",
-    "mode.select_2nd",
-    "syntax.variable",
-    "syntax.variable_builtin",
-    "syntax.variable_parameter",
-    "syntax.variable_member",
-    "syntax.keyword",
-    "syntax.keyword_operator",
-    "syntax.keyword_function",
-    "syntax.keyword_conditional",
-    "syntax.keyword_repeat",
-    "syntax.keyword_import",
-    "syntax.keyword_return",
-    "syntax.keyword_exception",
-    "syntax.keyword_directive",
-    "syntax.keyword_storage",
-    "syntax.type",
-    "syntax.type_builtin",
-    "syntax.type_variant",
-    "syntax.function",
-    "syntax.function_builtin",
-    "syntax.function_method",
-    "syntax.function_macro",
-    "syntax.constant",
-    "syntax.constant_builtin",
-    "syntax.constant_boolean",
-    "syntax.constant_number",
-    "syntax.constant_character",
-    "syntax.label",
-    "syntax.constructor",
-    "syntax.string",
-    "syntax.attribute",
-    "syntax.namespace",
-    "syntax.tag",
-    "syntax.tag_builtin",
-    "syntax.comment",
-    "syntax.comment_doc",
-    "syntax.operator",
-    "syntax.punctuation",
-    "syntax.punctuation_rainbow1",
-    "syntax.punctuation_rainbow2",
-    "syntax.punctuation_rainbow3",
-    "syntax.punctuation_rainbow4",
-    "syntax.punctuation_rainbow5",
-    "syntax.punctuation_rainbow6",
-    "syntax.special",
-    "syntax.special_function",
-    "syntax.special_character",
-    "syntax.special_string",
-    "syntax.special_punctuation",
-    "diff.plus",
-    "diff.minus",
-    "diff.delta",
-    "diff.delta_moved",
-    "diff.delta_conflict",
-    "markup.heading",
-    "markup.heading_2nd",
-    "markup.heading_3rd",
-    "markup.heading_4th",
-    "markup.heading_5th",
-    "markup.heading_6th",
-    "markup.list",
-    "markup.list_numbered",
-    "markup.list_checked",
-    "markup.list_unchecked",
-    "markup.link",
-    "markup.link_text",
-    "markup.bold",
-    "markup.italic",
-    "markup.strikethrough",
-    "markup.quote",
-    "markup.raw",
-    "ansi.black",
-    "ansi.black_bright",
-    "ansi.red",
-    "ansi.red_bright",
-    "ansi.green",
-    "ansi.green_bright",
-    "ansi.yellow",
-    "ansi.yellow_bright",
-    "ansi.blue",
-    "ansi.blue_bright",
-    "ansi.magenta",
-    "ansi.magenta_bright",
-    "ansi.cyan",
-    "ansi.cyan_bright",
-    "ansi.white",
-    "ansi.white_bright",
-];
+
+    debug {
+        "active",
+        "breakpoint",
+        "frameline",
+    },
+
+    mode {
+        "normal",
+        "normal_2nd",
+
+        "insert",
+        "insert_2nd",
+
+        "select",
+        "select_2nd",
+    },
+
+    syntax {
+        "variable",
+        "variable_builtin",
+        "variable_parameter",
+        "variable_member",
+
+        "keyword",
+        "keyword_operator",
+        "keyword_function",
+        "keyword_conditional",
+        "keyword_repeat",
+        "keyword_import",
+        "keyword_return",
+        "keyword_exception",
+        "keyword_directive",
+        "keyword_storage",
+
+        "type",
+        "type_builtin",
+        "type_variant",
+
+        "function",
+        "function_builtin",
+        "function_method",
+        "function_macro",
+
+        "constant",
+        "constant_builtin",
+        "constant_boolean",
+        "constant_number",
+        "constant_character",
+
+        "label",
+        "constructor",
+        "string",
+        "attribute",
+        "namespace",
+
+        "tag",
+        "tag_builtin",
+
+        "comment",
+        "comment_doc",
+
+        "operator",
+
+        "punctuation",
+
+        "special",
+        "special_function",
+        "special_character",
+        "special_string",
+        "special_punctuation",
+    },
+
+    diff {
+        "plus",
+        "minus",
+
+        "delta",
+        "delta_moved",
+        "delta_conflict",
+    },
+
+    markup {
+        "heading",
+        "heading_2nd",
+        "heading_3rd",
+        "heading_4th",
+        "heading_5th",
+        "heading_6th",
+
+        "list",
+        "list_numbered",
+        "list_checked",
+        "list_unchecked",
+
+        "link",
+        "link_text",
+
+        "bold",
+        "italic",
+        "strikethrough",
+        "quote",
+        "raw",
+    },
+
+    ansi {
+        "black",
+        "black_bright",
+
+        "red",
+        "red_bright",
+
+        "green",
+        "green_bright",
+
+        "yellow",
+        "yellow_bright",
+
+        "blue",
+        "blue_bright",
+
+        "magenta",
+        "magenta_bright",
+
+        "cyan",
+        "cyan_bright",
+
+        "white",
+        "white_bright",
+    },
+}
 
 const VARIANT_SEPARATOR: char = '_';
 
