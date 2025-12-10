@@ -106,9 +106,8 @@
             ''}
 
              echo ""
-             echo "theymer developer environment active"
-             echo "rust: $(rustc --version)"
-             echo "  on: ${system}"
+             echo "theymer developer environment active!"
+             echo "using $(rustc --version) on ${system}"
              echo ""
           '';
         };
