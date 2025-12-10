@@ -121,12 +121,6 @@ comment = "$elephant"
 comment_doc = "$ash"
 operator = "$honeycomb"
 punctuation = "$olive"
-punctuation_rainbow1 = "$goddess"
-punctuation_rainbow2 = "$sky"
-punctuation_rainbow3 = "$lilac"
-punctuation_rainbow4 = "$cherry_blossom"
-punctuation_rainbow5 = "$sand"
-punctuation_rainbow6 = "$creamsicle"
 special = "$princess"
 # special_function
 special_character = "syntax.special_string"
@@ -175,3 +169,13 @@ cyan = "$sky"
 cyan_bright = "$peacock"
 white = "$elephant"
 white_bright = "$ash"
+
+[extra]
+rainbow = [
+  "$goddess",
+  "$sky",
+  "$lilac",
+  "$cherry_blossom",
+  "$sand",
+  "$creamsicle"
+]

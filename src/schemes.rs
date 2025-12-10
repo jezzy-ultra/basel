@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use self::names::Validated;
-use self::roles::Value as RoleValue;
 use crate::Result;
 use crate::extensions::PathExt as _;
 use crate::output::{Ascii, Unicode};
@@ -17,8 +16,13 @@ pub(crate) mod roles;
 pub(crate) mod swatches;
 
 pub(crate) use self::names::Error as NameError;
-pub(crate) use self::roles::{Error as RoleError, Kind as RoleKind, Name as RoleName};
-pub(crate) use self::swatches::{Error as SwatchError, Name as SwatchName, Swatch};
+pub(crate) use self::roles::{
+    Error as RoleError, Kind as RoleKind, Name as RoleName,
+    Resolved as ResolvedRole, Value as RoleValue,
+};
+pub(crate) use self::swatches::{
+    Error as SwatchError, Name as SwatchName, Swatch,
+};
 
 const MAX_META_FIELD_LENGTH: usize = 1000;
 
@@ -35,8 +39,8 @@ pub(crate) enum Error {
     #[error("invalid meta field `{field}`: {reason}")]
     InvalidMeta { field: String, reason: String },
 
-    #[error("invalid roles structure in `{path}`: {reason}")]
-    InvalidRolesStructure { path: String, reason: String },
+    #[error("invalid structure in `{path}`: {reason}")]
+    InvalidStructure { path: String, reason: String },
 
     #[error("invalid toml syntax in `{path}`: {src}")]
     ParsingRaw {
@@ -72,6 +76,9 @@ pub(crate) struct Scheme {
 
     #[serde(flatten)]
     pub resolved_roles: IndexMap<RoleName, ResolvedRole>,
+
+    pub extra: Option<Extra>,
+    pub resolved_extra: Option<ResolvedExtra>,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,11 +88,19 @@ struct Raw {
     meta: Meta,
     palette: IndexSet<Swatch>,
     roles: IndexMap<RoleName, RoleValue>,
+    extra: Option<Extra>,
 }
 
 impl Raw {
     fn into_scheme(self, fallback_name: &str) -> Result<Scheme> {
         let resolved_roles = self.resolve_roles()?;
+        let resolved_extra = self
+            .extra
+            .as_ref()
+            .map(|extra| {
+                Self::resolve_extra(extra, &self.palette, &resolved_roles)
+            })
+            .transpose()?;
         let (scheme, scheme_ascii) = Self::names(&self, fallback_name)?;
 
         Ok(Scheme {
@@ -95,6 +110,8 @@ impl Raw {
             palette: self.palette,
             roles: self.roles,
             resolved_roles,
+            extra: self.extra,
+            resolved_extra,
         })
     }
 
@@ -143,27 +160,87 @@ impl Raw {
 
         match self.roles.get(&role) {
             Some(RoleValue::Swatch(display_name)) => {
-                Ok(self.palette.get(display_name.as_str()).map_or_else(
-                    || {
-                        Err(Error::UndefinedSwatch {
-                            swatch: display_name.to_string(),
-                            role: role.to_string(),
-                        })
-                    },
-                    |swatch| {
-                        Ok(ResolvedRole {
-                            hex: swatch.hex().to_string(),
-                            swatch: swatch.name.to_string(),
-                            ascii: swatch.ascii.to_string(),
-                        })
-                    },
-                )?)
+                let swatch = self
+                    .palette
+                    .get(display_name.as_str())
+                    .ok_or_else(|| Error::UndefinedSwatch {
+                        role: role.to_string(),
+                        swatch: display_name.to_string(),
+                    })?;
+
+                Ok(Self::resolved_role_from(swatch))
             }
-            Some(RoleValue::Role(role_name)) => self.resolve_role(*role_name, visited),
+            Some(RoleValue::Role(role_name)) => {
+                self.resolve_role(*role_name, visited)
+            }
             None => match role.classify() {
                 RoleKind::Base(_name) => Err(RoleError::MissingRequired(role.to_string()).into()),
                 RoleKind::Optional { base } => self.resolve_role(base, visited),
             },
+        }
+    }
+
+    fn resolve_extra(
+        extra: &Extra,
+        palette: &IndexSet<Swatch>,
+        resolved_roles: &IndexMap<RoleName, ResolvedRole>,
+    ) -> Result<ResolvedExtra> {
+        let rainbow = extra
+            .rainbow
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let value = RoleValue::parse(s).map_err(|_src| {
+                    crate::Error::Role(RoleError::Undefined(format!(
+                        "extra.rainbow[{i}]"
+                    )))
+                })?;
+
+                Self::resolve_value(
+                    &value,
+                    palette,
+                    resolved_roles,
+                    &format!("`extra.rainbow[{i}]`"),
+                )
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(ResolvedExtra { rainbow })
+    }
+
+    fn resolved_role_from(swatch: &Swatch) -> ResolvedRole {
+        ResolvedRole {
+            hex: swatch.hex().to_string(),
+            swatch: swatch.name.to_string(),
+            ascii: swatch.ascii.to_string(),
+            rgb: swatch.rgb(),
+        }
+    }
+
+    fn resolve_value(
+        value: &RoleValue,
+        palette: &IndexSet<Swatch>,
+        resolved_roles: &IndexMap<RoleName, ResolvedRole>,
+        role: &str,
+    ) -> Result<ResolvedRole> {
+        match value {
+            RoleValue::Swatch(name) => {
+                let swatch = palette.get(name.as_str()).ok_or_else(|| {
+                    Error::UndefinedSwatch {
+                        role: role.to_string(),
+                        swatch: name.to_string(),
+                    }
+                })?;
+
+                Ok(Self::resolved_role_from(swatch))
+            }
+            RoleValue::Role(name) => {
+                resolved_roles.get(name).cloned().ok_or_else(|| {
+                    crate::Error::Role(RoleError::Undefined(format!(
+                        "`{role}` -> `{name}`"
+                    )))
+                })
+            }
         }
     }
 
@@ -187,12 +264,13 @@ impl Raw {
     ) -> Result<IndexMap<RoleName, RoleValue>> {
         let mut result = IndexMap::new();
 
-        let table = roles_val
-            .as_table()
-            .ok_or_else(|| Error::InvalidRolesStructure {
-                path: path.to_owned(),
-                reason: "`roles` must be a table".to_owned(),
-            })?;
+        let table =
+            roles_val
+                .as_table()
+                .ok_or_else(|| Error::InvalidStructure {
+                    path: path.to_owned(),
+                    reason: "`roles` must be a table".to_owned(),
+                })?;
 
         for (key, val) in table {
             if let Some(nested_table) = val.as_table() {
@@ -214,14 +292,13 @@ impl Raw {
         path: &str,
         parsed: &mut IndexMap<RoleName, RoleValue>,
     ) -> Result<()> {
-        let role_name = role_key
-            .parse()
-            .map_err(|_src| Error::InvalidRolesStructure {
+        let role_name =
+            role_key.parse().map_err(|_src| Error::InvalidStructure {
                 path: path.to_owned(),
                 reason: format!("invalid role name: `{role_key}`"),
             })?;
 
-        let val_str = val.as_str().ok_or_else(|| Error::InvalidRolesStructure {
+        let val_str = val.as_str().ok_or_else(|| Error::InvalidStructure {
             path: path.to_owned(),
             reason: format!("role `{role_key}` must be a string"),
         })?;
@@ -230,7 +307,47 @@ impl Raw {
         Ok(())
     }
 
-    fn parse_palette(val: &toml::Value, path: &str) -> Result<IndexSet<Swatch>> {
+    fn parse_extra(val: &toml::Value, path: &str) -> Result<Extra> {
+        let table = val.as_table().ok_or_else(|| Error::InvalidStructure {
+            path: path.to_owned(),
+            reason: "`roles` must be a table".to_owned(),
+        })?;
+
+        let rainbow = match table.get("rainbow") {
+            Some(val) => {
+                let arr =
+                    val.as_array().ok_or_else(|| Error::InvalidStructure {
+                        path: path.to_owned(),
+                        reason: "`extra.rainbow` must be an array".to_owned(),
+                    })?;
+
+                arr.iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        v.as_str()
+                            .ok_or_else(|| {
+                                Error::InvalidStructure {
+                                    path: path.to_owned(),
+                                    reason: format!(
+                                        "`extra.rainbow[{i}]` must be a string"
+                                    ),
+                                }
+                                .into()
+                            })
+                            .map(ToString::to_string)
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            }
+            None => Vec::new(),
+        };
+
+        Ok(Extra { rainbow })
+    }
+
+    fn parse_palette(
+        val: &toml::Value,
+        path: &str,
+    ) -> Result<IndexSet<Swatch>> {
         let table = val.as_table().ok_or_else(|| Error::Deserializing {
             section: "palette".to_owned(),
             path: path.to_owned(),
@@ -402,12 +519,18 @@ pub(crate) fn load(name: &str, path: &Path) -> Result<Scheme> {
 
     let roles = Raw::parse_roles(roles_val, &path_str)?;
 
+    let extra = match root.get("extra") {
+        Some(val) => Some(Raw::parse_extra(val, &path_str)?),
+        None => None,
+    };
+
     let raw = Raw {
         scheme,
         scheme_ascii,
         meta,
         palette,
         roles,
+        extra,
     };
 
     raw.into_scheme(name)

@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use super::Color;
 use crate::output::upstream::Special;
 use crate::output::{Style, TextStyle};
-use crate::schemes::{Meta, ResolvedRole, RoleName, Swatch};
+use crate::schemes::{Meta, ResolvedExtra, ResolvedRole, RoleName, Swatch};
 use crate::{Result, Scheme};
 
 pub(crate) fn build(
@@ -38,6 +38,10 @@ pub(crate) fn build(
 
     for (group_name, group_map) in groups {
         ctx.insert(group_name, minijinja::Value::from(group_map));
+    }
+
+    if let Some(resolved_extra) = &scheme.resolved_extra {
+        insert_extra(&mut ctx, resolved_extra, style);
     }
 
     if let Some(name) = current_swatch {
@@ -209,6 +213,30 @@ fn insert_role(
     }
 
     Ok(())
+}
+
+fn insert_extra(
+    ctx: &mut BTreeMap<String, minijinja::Value>,
+    resolved_extra: &ResolvedExtra,
+    style: &Arc<Style>,
+) {
+    let rainbow: Vec<minijinja::Value> = resolved_extra
+        .rainbow
+        .iter()
+        .map(|r| {
+            let color = Color::role(
+                r.hex.clone(),
+                r.swatch.clone(),
+                r.ascii.clone(),
+                r.rgb,
+                Arc::clone(style),
+            );
+
+            minijinja::Value::from_object(color)
+        })
+        .collect();
+
+    ctx.insert("rainbow".to_owned(), minijinja::Value::from(rainbow));
 }
 
 fn insert_current_swatch(

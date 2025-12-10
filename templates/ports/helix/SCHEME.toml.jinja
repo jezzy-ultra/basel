@@ -268,22 +268,13 @@
 "diagnostic.deprecated" = { modifiers = ["crossed_out"] }
 {% if "bg_alt" is set %}
 "tabstop".bg = "bg_alt"
-{% endif -%}
+{% endif %}
 "tabstop".modifiers = ["italic"]
-{% if "syntax.punctuation_rainbow1" is set
-  or "syntax.punctuation_rainbow2" is set
-  or "syntax.punctuation_rainbow3" is set
-  or "syntax.punctuation_rainbow4" is set
-  or "syntax.punctuation_rainbow5" is set
-  or "syntax.punctuation_rainbow6" is set
-%}
+{% if "rainbow" is set %}
 "rainbow" = [
-  "{{ syntax.punctuation_rainbow1 }}",
-  "{{ syntax.punctuation_rainbow2 }}",
-  "{{ syntax.punctuation_rainbow3 }}",
-  "{{ syntax.punctuation_rainbow4 }}",
-  "{{ syntax.punctuation_rainbow5 }}",
-  "{{ syntax.punctuation_rainbow6 }}",
+{% for color in rainbow %}
+  "{{ color }}",
+{% endfor %}
 ]
 {% endif %}
 
