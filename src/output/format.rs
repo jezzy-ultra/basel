@@ -157,6 +157,7 @@ fn markdown_options<'a>() -> comrak::Options<'a> {
             cjk_friendly_emphasis: true,
             subtext: true,
             highlight: true,
+            phoenix_heex: false,
         },
         parse: Parse {
             smart: true,

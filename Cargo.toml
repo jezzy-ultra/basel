@@ -248,7 +248,7 @@ dprint = { version = "^0.50" }
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-comrak = { version = "0.48", features = ["shortcodes"] }
+comrak = { version = "0.49", features = ["shortcodes"] }
 deunicode = "1"
 env_logger = "0.11"
 git-url-parse = "0.6"
