@@ -300,14 +300,6 @@ impl Raw {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub(crate) struct ResolvedRole {
-    pub hex: String,
-    pub swatch: String,
-    pub ascii: String,
-}
-
-#[non_exhaustive]
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub(crate) struct Meta {
     pub author: Option<String>,

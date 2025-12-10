@@ -42,7 +42,7 @@ use std::str::FromStr;
 
 use owo_colors::OwoColorize as _;
 use owo_colors::Stream::Stdout;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::SwatchName;
 
@@ -270,6 +270,15 @@ impl FromStr for Name {
             .map(Self)
             .ok_or_else(|| Error::Undefined(s.to_owned()))
     }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct Resolved {
+    pub swatch: String,
+    pub ascii: String,
+    pub hex: String,
+    pub rgb: (u8, u8, u8),
 }
 
 pub(crate) fn iter() -> impl Iterator<Item = Name> {
