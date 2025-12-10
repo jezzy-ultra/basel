@@ -68,7 +68,7 @@
               description = cargo.package.description;
               homepage = workspace.repository;
               license = workspace.license;
-              mainProgram = "they";
+              mainProgram = "theymer";
               platforms = platforms.unix;
             };
           }

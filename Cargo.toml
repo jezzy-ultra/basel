@@ -245,10 +245,6 @@ cargo-modules = { version = "^0.25", bins = ["cargo-modules"] }
 dioxus-cli = { version = "^0.7", bins = ["dx"] }
 dprint = { version = "^0.50" }
 
-[[bin]]
-name = "they"
-path = "src/main.rs"
-
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }

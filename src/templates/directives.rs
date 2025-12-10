@@ -133,7 +133,7 @@ impl Directives {
             return Ok(LineType::Content);
         }
 
-        // TODO: support `they` directives inside jinja comments
+        // TODO: support theymer directives inside jinja comments
         if let Some(part) = trimmed.strip_prefix("#theymer:") {
             if let Some((k, v)) = part.trim().split_once('=') {
                 return Ok(LineType::Directive(Theymer {
