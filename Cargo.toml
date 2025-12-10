@@ -22,7 +22,7 @@ members = [
 version = "0.1.0"
 edition = "2024"
 readme = "README.md"
-repository = "https://github.com/jezzy-ultra/theymer"
+repository = "https://github.com/jezzy-star/theymer"
 license = "MIT"
 keywords = [
   "color",
