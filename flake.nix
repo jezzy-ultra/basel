@@ -1,5 +1,7 @@
 {
+  # TODO: figure out how to copy this from Cargo.toml
   description = "full-fat color scheme engine. write once, theme everything.";
+
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
