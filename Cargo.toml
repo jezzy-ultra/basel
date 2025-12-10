@@ -15,7 +15,7 @@ publish.workspace = true
 resolver = "3"
 members = [
   "crates/cargo-bin",
-  "crates/simple-palettes",
+  # "crates/simple-palettes",
 ]
 
 [workspace.package]
