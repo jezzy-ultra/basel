@@ -1,4 +1,40 @@
-//! Semantic color definitions.
+//! Semantic color vocabulary to define how a scheme's palette is used.
+//!
+//! _Roles_ are a collection of common semantic components of themeable
+//! interfaces that sit as an intermediary abstraction layer between the *what*
+//! — the colors used by the scheme — and a template's rendered output by
+//! describing *how* the palette gets rendered into concrete key/value pairs.
+//! For instance, the cutiepro scheme maps **blackboard** (`#181716`) to the
+//! `bg` role:
+//!
+//! ```toml
+//! [palette]
+//! blackboard = "#181716"
+//!
+//! [roles]
+//! bg = "$blackboard"
+//! ```
+//!
+//! In the Helix port template, `ui.background` gets assigned to the resolved
+//! color value of `bg`:
+//!
+//! ```toml
+//! # before rendering:
+//! "ui.background" = "{{ bg }}"
+//!
+//! # rendered with cutiepro:
+//! "ui.background" = "#181716"
+//! ```
+//!
+//! ...while in kitty's configuration the same thing is expressed as:
+//!
+//! ```shell
+//! # before rendering:
+//! background  {{ bg }}
+//!
+//! # rendered with cutiepro:
+//! background  #181716
+//! ```
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::result::Result as StdResult;
