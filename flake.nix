@@ -89,6 +89,7 @@
 
           nativeBuildInputs = [
             pkgs.alejandra
+            pkgs.sccache
             rustToolchain
           ];
 
