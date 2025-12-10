@@ -152,10 +152,13 @@ impl Raw {
         visited: &mut IndexSet<RoleName>,
     ) -> Result<ResolvedRole> {
         if !visited.insert(role) {
-            let mut chain: Vec<String> = visited.iter().map(ToString::to_string).collect();
+            let mut chain: Vec<String> =
+                visited.iter().map(ToString::to_string).collect();
             chain.push(role.to_string());
 
-            return Err(crate::Error::Role(RoleError::CircularReference(chain)));
+            return Err(crate::Error::Role(RoleError::CircularReference(
+                chain,
+            )));
         }
 
         match self.roles.get(&role) {
@@ -174,7 +177,9 @@ impl Raw {
                 self.resolve_role(*role_name, visited)
             }
             None => match role.classify() {
-                RoleKind::Base(_name) => Err(RoleError::MissingRequired(role.to_string()).into()),
+                RoleKind::Base(_name) => {
+                    Err(RoleError::MissingRequired(role.to_string()).into())
+                }
                 RoleKind::Optional { base } => self.resolve_role(base, visited),
             },
         }
@@ -370,7 +375,8 @@ impl Raw {
     }
 
     fn check_ascii_collisions(palette: &IndexSet<Swatch>) -> Result<()> {
-        let mut ascii_to_display: IndexMap<String, Vec<String>> = IndexMap::new();
+        let mut ascii_to_display: IndexMap<String, Vec<String>> =
+            IndexMap::new();
 
         for swatch in palette {
             ascii_to_display
@@ -393,7 +399,8 @@ impl Raw {
     }
 
     fn check_case_collisions(palette: &IndexSet<Swatch>) -> Result<()> {
-        let mut lowercase_to_original: IndexMap<String, Vec<String>> = IndexMap::new();
+        let mut lowercase_to_original: IndexMap<String, Vec<String>> =
+            IndexMap::new();
 
         for swatch in palette {
             let lowercase = swatch.name.as_str().to_lowercase();
@@ -427,18 +434,31 @@ pub(crate) struct Meta {
     pub blurb_ascii: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct Extra {
+    #[serde(default)]
+    pub rainbow: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ResolvedExtra {
+    pub rainbow: Vec<ResolvedRole>,
+}
+
 pub(crate) fn load(name: &str, path: &Path) -> Result<Scheme> {
     let path_str = path.display().to_string();
 
-    let content = fs::read_to_string(&path_str).map_err(|src| Error::Reading {
-        path: path_str.clone(),
-        src,
-    })?;
+    let content =
+        fs::read_to_string(&path_str).map_err(|src| Error::Reading {
+            path: path_str.clone(),
+            src,
+        })?;
 
-    let root: toml::Table = toml::from_str(&content).map_err(|src| Error::ParsingRaw {
-        path: path_str.clone(),
-        src: Box::new(src),
-    })?;
+    let root: toml::Table =
+        toml::from_str(&content).map_err(|src| Error::ParsingRaw {
+            path: path_str.clone(),
+            src: Box::new(src),
+        })?;
 
     let scheme: Option<Name> = root
         .get("scheme")
@@ -453,9 +473,9 @@ pub(crate) fn load(name: &str, path: &Path) -> Result<Scheme> {
             Name::parse(s).map_err(|e| Error::Deserializing {
                 section: "scheme".to_owned(),
                 path: path_str.clone(),
-                src: Box::new(<toml::de::Error as serde::de::Error>::custom(format!(
-                    "{e}"
-                ))),
+                src: Box::new(<toml::de::Error as serde::de::Error>::custom(
+                    format!("{e}"),
+                )),
             })
         })
         .transpose()?;
@@ -473,9 +493,9 @@ pub(crate) fn load(name: &str, path: &Path) -> Result<Scheme> {
             AsciiName::parse(s).map_err(|e| Error::Deserializing {
                 section: "scheme_ascii".to_owned(),
                 path: path_str.clone(),
-                src: Box::new(<toml::de::Error as serde::de::Error>::custom(format!(
-                    "{e}"
-                ))),
+                src: Box::new(<toml::de::Error as serde::de::Error>::custom(
+                    format!("{e}"),
+                )),
             })
         })
         .transpose()?;
@@ -499,13 +519,14 @@ pub(crate) fn load(name: &str, path: &Path) -> Result<Scheme> {
     validate_meta_field("blurb", meta.blurb.as_ref())?;
     validate_meta_field("blurb_ascii", meta.blurb_ascii.as_ref())?;
 
-    let palette_val = root.get("palette").ok_or_else(|| Error::Deserializing {
-        section: "palette".to_owned(),
-        path: path_str.clone(),
-        src: Box::new(<toml::de::Error as serde::de::Error>::missing_field(
-            "palette",
-        )),
-    })?;
+    let palette_val =
+        root.get("palette").ok_or_else(|| Error::Deserializing {
+            section: "palette".to_owned(),
+            path: path_str.clone(),
+            src: Box::new(
+                <toml::de::Error as serde::de::Error>::missing_field("palette"),
+            ),
+        })?;
 
     let palette = Raw::parse_palette(palette_val, &path_str)?;
 
@@ -589,7 +610,8 @@ mod tests {
     use super::*;
 
     fn create_temp_scheme_file(toml: &str) -> NamedTempFile {
-        let mut temp = NamedTempFile::new().expect("failed to create temp file");
+        let mut temp =
+            NamedTempFile::new().expect("failed to create temp file");
         temp.write_all(toml.as_bytes())
             .expect("failed to write temp file");
 
@@ -602,7 +624,11 @@ mod tests {
         load(name, temp.path())
     }
 
-    fn assert_role_hex_equals(context: &BTreeMap<String, JinjaValue>, role: &str, expected: &str) {
+    fn assert_role_hex_equals(
+        context: &BTreeMap<String, JinjaValue>,
+        role: &str,
+        expected: &str,
+    ) {
         let obj = context
             .get(role)
             .unwrap_or_else(|| panic!("role `{role}` not found in context`"));
@@ -610,7 +636,11 @@ mod tests {
             .get_attr("hex")
             .unwrap_or_else(|_| panic!("role `{role}` missing `hex` field"));
 
-        assert_eq!(actual, expected.into(), "role `{role}` has wrong hex value");
+        assert_eq!(
+            actual,
+            expected.into(),
+            "role `{role}` has wrong hex value"
+        );
     }
 
     fn assert_nested_role_hex_equals(
@@ -622,12 +652,12 @@ mod tests {
         let group_obj = context
             .get(group)
             .unwrap_or_else(|| panic!("group `{group}` not found in context"));
-        let role_obj = group_obj
-            .get_attr(role)
-            .unwrap_or_else(|_| panic!("role `{group}.{role}` not found in context"));
-        let actual = role_obj
-            .get_attr("hex")
-            .unwrap_or_else(|_| panic!("role `{group}.{role}` missing `hex` field"));
+        let role_obj = group_obj.get_attr(role).unwrap_or_else(|_| {
+            panic!("role `{group}.{role}` not found in context")
+        });
+        let actual = role_obj.get_attr("hex").unwrap_or_else(|_| {
+            panic!("role `{group}.{role}` missing `hex` field")
+        });
 
         assert_eq!(
             actual,

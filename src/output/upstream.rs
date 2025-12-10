@@ -39,10 +39,11 @@ pub(crate) struct Upstream {
 
 impl Upstream {
     fn parse(remote: &str) -> Result<GitUrl> {
-        let parsed = GitUrl::parse(remote).map_err(|src| Error::ParsingUrl {
-            url: remote.to_owned(),
-            src,
-        })?;
+        let parsed =
+            GitUrl::parse(remote).map_err(|src| Error::ParsingUrl {
+                url: remote.to_owned(),
+                src,
+            })?;
 
         Ok(parsed)
     }
@@ -56,7 +57,10 @@ impl Upstream {
             let name = remotes.get(0).ok_or(Error::NoRemote)?;
 
             // TODO: add hint about setting branch in config
-            info!("`origin` not found, defaulting to first found branch: `{name}`");
+            info!(
+                "`origin` not found, defaulting to first found branch: \
+                 `{name}`"
+            );
 
             repo.find_remote(name).map_err(|src| Error::FetchingUrl {
                 remote: name.to_owned(),
@@ -97,7 +101,10 @@ impl Cache {
         Self(IndexMap::new())
     }
 
-    pub(crate) fn get_or_detect(&mut self, render_path: &Path) -> Option<Upstream> {
+    pub(crate) fn get_or_detect(
+        &mut self,
+        render_path: &Path,
+    ) -> Option<Upstream> {
         let Ok(repo) = Repository::discover(render_path) else {
             warn!(
                 "failed to discover git repo from path `{}`",

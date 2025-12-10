@@ -48,6 +48,7 @@ fn main() {
         process::exit(1);
     }
 
-    // TODO: fix lazy implementation of always syncing shims on every invocation?
+    // TODO: fix lazy implementation of always syncing shims on every
+    // invocation?
     let _ = shims::sync();
 }

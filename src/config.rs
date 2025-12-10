@@ -52,8 +52,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            // TODO: figure out a design where defaults can be extended by the user instead of
-            // completely overridden
+            // TODO: figure out a design where defaults can be extended by the
+            // user instead of completely overridden
             strip_directives: vec![vec!["#:tombi".to_owned()]],
 
             dirs: Dirs::default(),
@@ -97,8 +97,14 @@ impl Provider {
     pub fn merge_with(&self, default: &Self) -> Self {
         Self {
             host: self.host.clone(),
-            blob_path: self.blob_path.clone().or_else(|| default.blob_path.clone()),
-            raw_path: self.raw_path.clone().or_else(|| default.raw_path.clone()),
+            blob_path: self
+                .blob_path
+                .clone()
+                .or_else(|| default.blob_path.clone()),
+            raw_path: self
+                .raw_path
+                .clone()
+                .or_else(|| default.raw_path.clone()),
             branch: self.branch.clone().or_else(|| default.branch.clone()),
         }
     }
@@ -112,7 +118,8 @@ pub(crate) fn load() -> Result<Config> {
     debug!("using project root `{}`", project_root.display());
 
     let config_path = project_root.join(FILENAME);
-    let content = fs::read_to_string(&config_path).map_err(|src| Error::Reading { src })?;
+    let content = fs::read_to_string(&config_path)
+        .map_err(|src| Error::Reading { src })?;
 
     env::set_current_dir(&project_root).map_err(|src| Error::ChangingDir {
         cwd: cwd.display().to_string(),
@@ -124,8 +131,10 @@ pub(crate) fn load() -> Result<Config> {
 
     let project_root: &Path = &project_root;
 
-    config.dirs.schemes = expand_and_resolve(&config.dirs.schemes, project_root)?;
-    config.dirs.templates = expand_and_resolve(&config.dirs.templates, project_root)?;
+    config.dirs.schemes =
+        expand_and_resolve(&config.dirs.schemes, project_root)?;
+    config.dirs.templates =
+        expand_and_resolve(&config.dirs.templates, project_root)?;
     config.dirs.render = expand_and_resolve(&config.dirs.render, project_root)?;
 
     config.providers = merge_providers_with_defaults(&config.providers);
@@ -137,25 +146,40 @@ fn default_providers() -> Vec<Provider> {
     vec![
         Provider {
             host: "github.com".to_owned(),
-            blob_path: Some("{host}/{owner}/{repo}/blob/{ref}/{file}".to_owned()),
-            raw_path: Some("raw.githubusercontent.com/{owner}/{repo}/{ref}/{file}".to_owned()),
+            blob_path: Some(
+                "{host}/{owner}/{repo}/blob/{ref}/{file}".to_owned(),
+            ),
+            raw_path: Some(
+                "raw.githubusercontent.com/{owner}/{repo}/{ref}/{file}"
+                    .to_owned(),
+            ),
             branch: None,
         },
         Provider {
             host: "gitlab.com".to_owned(),
-            blob_path: Some("{host}/{owner}/{repo}/-/blob/{ref}/{file}".to_owned()),
-            raw_path: Some("{host}/{owner}/{repo}/-/raw/{ref}/{file}".to_owned()),
+            blob_path: Some(
+                "{host}/{owner}/{repo}/-/blob/{ref}/{file}".to_owned(),
+            ),
+            raw_path: Some(
+                "{host}/{owner}/{repo}/-/raw/{ref}/{file}".to_owned(),
+            ),
             branch: None,
         },
         Provider {
             host: "codeberg.org".to_owned(),
-            blob_path: Some("{host}/{owner}/{repo}/src/branch/{ref}/{file}".to_owned()),
-            raw_path: Some("{host}/{owner}/{repo}/raw/branch/{ref}/{file}".to_owned()),
+            blob_path: Some(
+                "{host}/{owner}/{repo}/src/branch/{ref}/{file}".to_owned(),
+            ),
+            raw_path: Some(
+                "{host}/{owner}/{repo}/raw/branch/{ref}/{file}".to_owned(),
+            ),
             branch: None,
         },
         Provider {
             host: "bitbucket.org".to_owned(),
-            blob_path: Some("{host}/{owner}/{repo}/src/{ref}/{file}".to_owned()),
+            blob_path: Some(
+                "{host}/{owner}/{repo}/src/{ref}/{file}".to_owned(),
+            ),
             raw_path: Some("{host}/{owner}/{repo}/raw/{ref}/{file}".to_owned()),
             branch: None,
         },

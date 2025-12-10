@@ -53,9 +53,11 @@ impl Provider {
 
         Ok(Resolved {
             host: self.host.clone(),
-            blob_path: self.blob_path.ok_or_else(|| Error::MissingRequired {
-                field: "blob_path".to_owned(),
-                host: self.host.clone(),
+            blob_path: self.blob_path.ok_or_else(|| {
+                Error::MissingRequired {
+                    field: "blob_path".to_owned(),
+                    host: self.host.clone(),
+                }
             })?,
             raw_path: self.raw_path.ok_or_else(|| Error::MissingRequired {
                 field: "raw_path".to_owned(),
@@ -92,7 +94,10 @@ pub(crate) fn resolve(merged: &[Provider]) -> Result<Vec<Resolved>> {
     Ok(resolved)
 }
 
-pub(crate) fn resolve_blob(url: &str, providers: &[Resolved]) -> Result<String> {
+pub(crate) fn resolve_blob(
+    url: &str,
+    providers: &[Resolved],
+) -> Result<String> {
     let parsed = Url::parse(url).map_err(|src| Error::ParsingUrl {
         url: url.to_owned(),
         src,
@@ -102,9 +107,10 @@ pub(crate) fn resolve_blob(url: &str, providers: &[Resolved]) -> Result<String> 
         url: url.to_owned(),
     })?;
 
-    let provider = find_matching(host, providers).ok_or_else(|| Error::NoneFound {
-        host: host.to_owned(),
-    })?;
+    let provider =
+        find_matching(host, providers).ok_or_else(|| Error::NoneFound {
+            host: host.to_owned(),
+        })?;
 
     let components = extract_components(&parsed, url)?;
 
@@ -123,15 +129,16 @@ pub(crate) fn build_blob(
         url: url.to_string(),
     })?;
 
-    let resolved = find_matching(host, providers).ok_or_else(|| Error::NoneFound {
-        host: host.to_owned(),
-    })?;
+    let resolved =
+        find_matching(host, providers).ok_or_else(|| Error::NoneFound {
+            host: host.to_owned(),
+        })?;
 
-    let provider =
-        url.provider_info::<GenericProvider>()
-            .map_err(|_src| Error::UnrecognizedPattern {
-                url: url.to_string(),
-            })?;
+    let provider = url.provider_info::<GenericProvider>().map_err(|_src| {
+        Error::UnrecognizedPattern {
+            url: url.to_string(),
+        }
+    })?;
 
     let owner = provider.owner();
     let repo = provider.repo();
@@ -163,7 +170,9 @@ pub(crate) fn extract_repo_url(blob: &str) -> Result<Option<String>> {
 
 // TODO: refactor to use constants (and iterate over them?)
 fn calculate_specificity(pattern: &str) -> (usize, usize, usize) {
-    let is_exact = !pattern.contains('*') && !pattern.contains('?') && !pattern.contains('{');
+    let is_exact = !pattern.contains('*')
+        && !pattern.contains('?')
+        && !pattern.contains('{');
 
     if is_exact {
         let labels = pattern.split('.').count();
@@ -178,13 +187,17 @@ fn calculate_specificity(pattern: &str) -> (usize, usize, usize) {
         .filter(|&c| !matches!(c, '*' | '?' | '{' | '}' | ','))
         .count();
 
-    let wildcards =
-        pattern.matches('*').count() + pattern.matches('?').count() + pattern.matches('{').count();
+    let wildcards = pattern.matches('*').count()
+        + pattern.matches('?').count()
+        + pattern.matches('{').count();
 
     (labels, literals, wildcards)
 }
 
-fn find_matching<'a>(host: &str, providers: &'a [Resolved]) -> Option<&'a Resolved> {
+fn find_matching<'a>(
+    host: &str,
+    providers: &'a [Resolved],
+) -> Option<&'a Resolved> {
     for provider in providers {
         if provider.host == host {
             return Some(provider);
@@ -194,13 +207,16 @@ fn find_matching<'a>(host: &str, providers: &'a [Resolved]) -> Option<&'a Resolv
     providers.iter().find(|&p| p.matcher.is_match(host))
 }
 
-fn extract_components<'a>(url: &'a Url, original: &str) -> Result<Components<'a>> {
+fn extract_components<'a>(
+    url: &'a Url,
+    original: &str,
+) -> Result<Components<'a>> {
     let path = url.path();
 
     // TODO: verify correctness and robustness
     let re = Regex::new(
-        "^/(?P<owner>[^/]+)/(?P<repo>[^/]+)(?:/(?:-|src/branch))?/(?:blob|raw)/(?P<ref>[^/]+)/(?\
-         P<file>.+)$",
+        "^/(?P<owner>[^/]+)/(?P<repo>[^/]+)(?:/(?:-|src/branch))?/(?:\
+         blob|raw)/(?P<ref>[^/]+)/(?P<file>.+)$",
     )
     .expect("regex should be valid");
 

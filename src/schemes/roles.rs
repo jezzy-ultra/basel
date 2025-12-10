@@ -324,9 +324,12 @@ pub(crate) enum Value {
 impl Value {
     pub(crate) fn parse(val: &str) -> Result<Self> {
         if let Some(swatch_name) = val.strip_prefix('$') {
-            let display_name = SwatchName::parse(swatch_name).map_err(|_err| {
-                Error::Undefined(format!("invalid swatch reference: `${swatch_name}`"))
-            })?;
+            let display_name =
+                SwatchName::parse(swatch_name).map_err(|_err| {
+                    Error::Undefined(format!(
+                        "invalid swatch reference: `${swatch_name}`"
+                    ))
+                })?;
             Ok(Self::Swatch(display_name))
         } else {
             let role_name = val.parse()?;
@@ -350,7 +353,10 @@ impl Name {
                 .iter()
                 .find(|&&role| role == base_str)
                 .copied()
-                .map_or_else(|| unreachable!("optional roles always have a base"), Self);
+                .map_or_else(
+                    || unreachable!("optional roles always have a base"),
+                    Self,
+                );
 
             Kind::Optional { base: base_role }
         }
@@ -406,7 +412,10 @@ fn format_circular_chain(roles: &[String]) -> String {
             if i == roles.len() - 1 {
                 format!(
                     "`{}`",
-                    role.if_supports_color(Stdout, |text| text.red().underline().to_string())
+                    role.if_supports_color(Stdout, |text| text
+                        .red()
+                        .underline()
+                        .to_string())
                 )
             } else {
                 format!("`{role}`")

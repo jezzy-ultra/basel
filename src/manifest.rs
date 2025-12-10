@@ -65,11 +65,15 @@ impl<E: Entry> Manifest<E> {
 
     pub(crate) fn load_or_create() -> Result<Self> {
         match fs::read_to_string(Self::file()) {
-            Ok(content) => serde_json::from_str(&content).map_err(|src| Error::Parsing {
-                file: Self::file().display().to_string(),
-                src: Box::new(src),
-            }),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Self::new(E::VERSION)),
+            Ok(content) => {
+                serde_json::from_str(&content).map_err(|src| Error::Parsing {
+                    file: Self::file().display().to_string(),
+                    src: Box::new(src),
+                })
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                Ok(Self::new(E::VERSION))
+            }
             Err(src) => Err(Error::Reading {
                 file: Self::file().display().to_string(),
                 src,
@@ -85,9 +89,11 @@ impl<E: Entry> Manifest<E> {
             })?;
         }
 
-        let content = serde_json::to_string_pretty(self).map_err(|src| Error::Parsing {
-            file: Self::file().display().to_string(),
-            src: Box::new(src),
+        let content = serde_json::to_string_pretty(self).map_err(|src| {
+            Error::Parsing {
+                file: Self::file().display().to_string(),
+                src: Box::new(src),
+            }
         })?;
 
         fs::write(Self::file(), content).map_err(|src| Error::Writing {
@@ -109,7 +115,10 @@ impl<E: Entry> Manifest<E> {
     }
 
     #[must_use]
-    pub(crate) fn find_orphans(&self, paths: &HashSet<PathBuf>) -> Vec<PathBuf> {
+    pub(crate) fn find_orphans(
+        &self,
+        paths: &HashSet<PathBuf>,
+    ) -> Vec<PathBuf> {
         self.entries
             .keys()
             .filter(|p| !paths.contains(*p))
@@ -155,8 +164,8 @@ pub(crate) fn hash(content: &str) -> String {
 }
 
 pub(crate) fn hash_file(path: &Path) -> anyhow::Result<String> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("failed to read `{}`", path.display()))?;
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("failed to read `{}`", path.display()))?;
 
     Ok(hash(&content))
 }
@@ -180,7 +189,9 @@ where
     seq.end()
 }
 
-fn deserialize_entries<'de, E, D>(deserializer: D) -> StdResult<IndexMap<PathBuf, E>, D::Error>
+fn deserialize_entries<'de, E, D>(
+    deserializer: D,
+) -> StdResult<IndexMap<PathBuf, E>, D::Error>
 where
     E: Entry,
     D: Deserializer<'de>,

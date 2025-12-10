@@ -8,8 +8,8 @@ use log::{debug, info, warn};
 use crate::output::upstream::{Cache, Special};
 use crate::output::{Decision, Upstream, WriteMode, format, strategy};
 use crate::templates::{
-    Directives, JINJA_TEMPLATE_SUFFIX, Loader, ResolvedProvider, SET_TEST_OBJECT,
-    SKIP_RENDERING_PREFIX, providers,
+    Directives, JINJA_TEMPLATE_SUFFIX, Loader, ResolvedProvider,
+    SET_TEST_OBJECT, SKIP_RENDERING_PREFIX, providers,
 };
 use crate::{Config, Error, Result, Scheme};
 
@@ -35,7 +35,11 @@ pub(crate) struct Session {
 }
 
 impl Session {
-    fn new(providers: Vec<ResolvedProvider>, write_mode: WriteMode, dry_run: bool) -> Result<Self> {
+    fn new(
+        providers: Vec<ResolvedProvider>,
+        write_mode: WriteMode,
+        dry_run: bool,
+    ) -> Result<Self> {
         Ok(Self {
             index: Index::load_or_create()?,
             providers,
@@ -72,7 +76,9 @@ fn resolve_path(
         .file_name()
         .ok_or_else(|| Error::InternalBug {
             module: "render",
-            reason: format!("attempted to render to corrupted path `{relative_path}`"),
+            reason: format!(
+                "attempted to render to corrupted path `{relative_path}`"
+            ),
         })?
         .to_string_lossy();
 
@@ -132,7 +138,8 @@ fn resolve_with_autodetect(
 ) -> Option<(Upstream, PathBuf)> {
     let abs_path = render_path.canonicalize().ok().or_else(|| {
         warn!(
-            "auto-detect mode... failed to canonicalize render path `{}`; file may not exist yet",
+            "auto-detect mode... failed to canonicalize render path `{}`; \
+             file may not exist yet",
             render_path.display()
         );
 
@@ -148,7 +155,8 @@ fn build_upstream(
     session: &mut Session,
     config: &Config,
 ) -> Special {
-    let Some((git_info, path)) = resolve_with_autodetect(render_path, &mut session.git_cache)
+    let Some((git_info, path)) =
+        resolve_with_autodetect(render_path, &mut session.git_cache)
     else {
         return Special::default();
     };
@@ -158,8 +166,12 @@ fn build_upstream(
 
     let branch = &git_info.branch;
 
-    let Ok(blob) = providers::build_blob(&git_info.url, &file_path, branch, &session.providers)
-    else {
+    let Ok(blob) = providers::build_blob(
+        &git_info.url,
+        &file_path,
+        branch,
+        &session.providers,
+    ) else {
         // FIXME: error handling
         let provider = git_info.url.host().unwrap_or("unknown");
         warn!("failed to build blob url for host `{provider}`");
@@ -189,14 +201,15 @@ fn prepare(
     special: &Special,
     current_swatch: Option<&str>,
 ) -> anyhow::Result<String> {
-    let context = context::build(scheme, special, &directives.style, current_swatch)?;
+    let context =
+        context::build(scheme, special, &directives.style, current_swatch)?;
 
     if !context.contains_key(SET_TEST_OBJECT) {
         return Err(Error::InternalBug {
             module: "render",
             reason: format!(
-                "scheme `{}` context for template `{template_name}` missing `{SET_TEST_OBJECT}` \
-                 template variable",
+                "scheme `{}` context for template `{template_name}` missing \
+                 `{SET_TEST_OBJECT}` template variable",
                 scheme.name.as_str()
             ),
         }
@@ -227,7 +240,8 @@ fn execute(
         // TODO: add interactive mode (possibly as default behavior?)
         Decision::Conflict => {
             warn!(
-                "conflict: `{}` (last modified by user; use `--force` to overwrite)",
+                "conflict: `{}` (last modified by user; use `--force` to \
+                 overwrite)",
                 path.display()
             );
         }
@@ -240,19 +254,24 @@ fn execute(
                 );
             } else {
                 if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent)
-                        .with_context(|| format!("writing file `{}`", path.display()))?;
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("writing file `{}`", path.display())
+                    })?;
                 }
 
-                fs::write(path, output)
-                    .with_context(|| format!("writing file `{}`", path.display()))?;
+                fs::write(path, output).with_context(|| {
+                    format!("writing file `{}`", path.display())
+                })?;
 
                 format(path)?;
 
-                let formatted = fs::read_to_string(path)
-                    .with_context(|| format!("reading file `{}` for hashing", path.display()))?;
+                let formatted =
+                    fs::read_to_string(path).with_context(|| {
+                        format!("reading file `{}` for hashing", path.display())
+                    })?;
 
-                let entry = Index::create_entry(path, template, scheme, &formatted)?;
+                let entry =
+                    Index::create_entry(path, template, scheme, &formatted)?;
 
                 session.index.insert(entry);
 
@@ -277,7 +296,8 @@ fn write(
     current_swatch: Option<&str>,
 ) -> anyhow::Result<()> {
     let scheme_name = scheme.name.as_str();
-    let path = resolve_path(template_name, scheme_name, config, current_swatch)?;
+    let path =
+        resolve_path(template_name, scheme_name, config, current_swatch)?;
     let special = build_upstream(scheme_name, &path, session, config);
 
     let output = prepare(
@@ -321,8 +341,8 @@ fn apply_internal(
     if uses_swatch_iteration(template_name) {
         if !template.source().contains(SWATCH_VARIABLE) {
             warn!(
-                "template `{template_name}` has `{SWATCH_MARKER}` in filename but doesn't use \
-                 {SWATCH_VARIABLE} inside template",
+                "template `{template_name}` has `{SWATCH_MARKER}` in filename \
+                 but doesn't use {SWATCH_VARIABLE} inside template",
             );
         }
 
@@ -358,7 +378,8 @@ pub(crate) fn all_with(
     config: &Config,
     session: &mut Session,
 ) -> Result<()> {
-    all_with_internal(scheme, templates, config, session).map_err(Error::rendering)
+    all_with_internal(scheme, templates, config, session)
+        .map_err(Error::rendering)
 }
 
 fn all_with_internal(
@@ -367,7 +388,9 @@ fn all_with_internal(
     config: &Config,
     session: &mut Session,
 ) -> anyhow::Result<()> {
-    for (template_name, (template, directives)) in templates.with_directives()? {
+    for (template_name, (template, directives)) in
+        templates.with_directives()?
+    {
         if !should_render(template_name) {
             continue;
         }
@@ -392,7 +415,8 @@ pub(crate) fn all(
     write_mode: WriteMode,
     dry_run: bool,
 ) -> Result<()> {
-    all_internal(templates, schemes, config, write_mode, dry_run).map_err(Error::rendering)
+    all_internal(templates, schemes, config, write_mode, dry_run)
+        .map_err(Error::rendering)
 }
 
 fn all_internal(
@@ -402,7 +426,8 @@ fn all_internal(
     write_mode: WriteMode,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let mut session = Session::new(templates.providers.clone(), write_mode, dry_run)?;
+    let mut session =
+        Session::new(templates.providers.clone(), write_mode, dry_run)?;
 
     for scheme_ref in schemes.values() {
         all_with(scheme_ref, templates, config, &mut session)?;

@@ -35,7 +35,9 @@ pub(crate) fn format(path: &Path) -> anyhow::Result<bool> {
 
     match supported_type {
         FileType::Json => json(path, json_format_options()),
-        FileType::Jsonc | FileType::Json5 => json(path, jsonc_json5_format_options()),
+        FileType::Jsonc | FileType::Json5 => {
+            json(path, jsonc_json5_format_options())
+        }
         FileType::Md => markdown(path),
         FileType::Toml => toml(path),
         FileType::Xml | FileType::Svg => xml(path),
@@ -43,8 +45,9 @@ pub(crate) fn format(path: &Path) -> anyhow::Result<bool> {
 }
 
 fn toml(path: &Path) -> anyhow::Result<bool> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
+    let content = fs::read_to_string(path).with_context(|| {
+        format!("reading file `{}` for formatting", path.display())
+    })?;
 
     let options = toml_options();
     let mut formatted = taplo::formatter::format(&content, options);
@@ -58,8 +61,9 @@ fn toml(path: &Path) -> anyhow::Result<bool> {
 
         Ok(false)
     } else {
-        fs::write(path, formatted)
-            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
+        fs::write(path, formatted).with_context(|| {
+            format!("writing formatted file `{}`", path.display())
+        })?;
 
         info!("formatted `{}`", path.display());
 
@@ -93,8 +97,9 @@ fn toml_options() -> taplo::formatter::Options {
 }
 
 fn markdown(path: &Path) -> anyhow::Result<bool> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
+    let content = fs::read_to_string(path).with_context(|| {
+        format!("reading file `{}` for formatting", path.display())
+    })?;
 
     let arena = comrak::Arena::new();
 
@@ -103,8 +108,9 @@ fn markdown(path: &Path) -> anyhow::Result<bool> {
     let root = comrak::parse_document(&arena, &content, &options);
 
     let mut formatted = String::new();
-    comrak::format_commonmark(root, &options, &mut formatted)
-        .with_context(|| format!("formatting markdown file `{}`", path.display()))?;
+    comrak::format_commonmark(root, &options, &mut formatted).with_context(
+        || format!("formatting markdown file `{}`", path.display()),
+    )?;
 
     if !formatted.ends_with('\n') {
         formatted.push('\n');
@@ -115,8 +121,9 @@ fn markdown(path: &Path) -> anyhow::Result<bool> {
 
         Ok(false)
     } else {
-        fs::write(path, formatted)
-            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
+        fs::write(path, formatted).with_context(|| {
+            format!("writing formatted file `{}`", path.display())
+        })?;
 
         info!("formatted `{}`", path.display());
 
@@ -208,26 +215,35 @@ fn jsonc_json5_format_options() -> json5format::FormatOptions {
     }
 }
 
-fn json(path: &Path, options: json5format::FormatOptions) -> anyhow::Result<bool> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
-
-    let format = Json5Format::with_options(options)
-        .with_context(|| format!("creating json5 formatter for `{}`", path.display()))?;
-
-    let parsed = json5format::ParsedDocument::from_str(&content, Some(path.display().to_string()))
-        .with_context(|| format!("parsing json file `{}`", path.display()))?;
-
-    let formatted_bytes = format
-        .to_utf8(&parsed)
-        .with_context(|| format!("formatting json file `{}`", path.display()))?;
-
-    let mut formatted = String::from_utf8(formatted_bytes).with_context(|| {
-        format!(
-            "converting formatted json to utf-8 for `{}`",
-            path.display()
-        )
+fn json(
+    path: &Path,
+    options: json5format::FormatOptions,
+) -> anyhow::Result<bool> {
+    let content = fs::read_to_string(path).with_context(|| {
+        format!("reading file `{}` for formatting", path.display())
     })?;
+
+    let format = Json5Format::with_options(options).with_context(|| {
+        format!("creating json5 formatter for `{}`", path.display())
+    })?;
+
+    let parsed = json5format::ParsedDocument::from_str(
+        &content,
+        Some(path.display().to_string()),
+    )
+    .with_context(|| format!("parsing json file `{}`", path.display()))?;
+
+    let formatted_bytes = format.to_utf8(&parsed).with_context(|| {
+        format!("formatting json file `{}`", path.display())
+    })?;
+
+    let mut formatted =
+        String::from_utf8(formatted_bytes).with_context(|| {
+            format!(
+                "converting formatted json to utf-8 for `{}`",
+                path.display()
+            )
+        })?;
 
     if !formatted.ends_with('\n') {
         formatted.push('\n');
@@ -238,8 +254,9 @@ fn json(path: &Path, options: json5format::FormatOptions) -> anyhow::Result<bool
 
         Ok(false)
     } else {
-        fs::write(path, formatted)
-            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
+        fs::write(path, formatted).with_context(|| {
+            format!("writing formatted file `{}`", path.display())
+        })?;
 
         info!("formatted `{}`", path.display());
 
@@ -250,8 +267,9 @@ fn json(path: &Path, options: json5format::FormatOptions) -> anyhow::Result<bool
 fn xml(path: &Path) -> anyhow::Result<bool> {
     use quick_xml::events::Event;
 
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("reading file `{}` for formatting", path.display()))?;
+    let content = fs::read_to_string(path).with_context(|| {
+        format!("reading file `{}` for formatting", path.display())
+    })?;
 
     let (indent_char, indent_size) = xml_format_options();
 
@@ -259,24 +277,35 @@ fn xml(path: &Path) -> anyhow::Result<bool> {
     reader.config_mut().check_comments = true;
     reader.config_mut().enable_all_checks(true);
 
-    let mut writer = quick_xml::Writer::new_with_indent(Vec::<u8>::new(), indent_char, indent_size);
+    let mut writer = quick_xml::Writer::new_with_indent(
+        Vec::<u8>::new(),
+        indent_char,
+        indent_size,
+    );
 
     loop {
         match reader.read_event() {
             Ok(Event::Eof) => break,
             Ok(event) => {
-                writer
-                    .write_event(event)
-                    .with_context(|| format!("writing xml event for `{}`", path.display()))?;
+                writer.write_event(event).with_context(|| {
+                    format!("writing xml event for `{}`", path.display())
+                })?;
             }
             Err(e) => {
-                return Err(e).with_context(|| format!("parsing xml file `{}`", path.display()));
+                return Err(e).with_context(|| {
+                    format!("parsing xml file `{}`", path.display())
+                });
             }
         }
     }
 
-    let mut formatted = String::from_utf8(writer.into_inner())
-        .with_context(|| format!("converting formatted xml to utf-8 for `{}`", path.display()))?;
+    let mut formatted =
+        String::from_utf8(writer.into_inner()).with_context(|| {
+            format!(
+                "converting formatted xml to utf-8 for `{}`",
+                path.display()
+            )
+        })?;
 
     if !formatted.ends_with('\n') {
         formatted.push('\n');
@@ -287,8 +316,9 @@ fn xml(path: &Path) -> anyhow::Result<bool> {
 
         Ok(false)
     } else {
-        fs::write(path, formatted)
-            .with_context(|| format!("writing formatted file `{}`", path.display()))?;
+        fs::write(path, formatted).with_context(|| {
+            format!("writing formatted file `{}`", path.display())
+        })?;
 
         info!("formatted `{}`", path.display());
 

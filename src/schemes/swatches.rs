@@ -123,17 +123,21 @@ impl Swatch {
                 ascii: display_name.to_ascii()?,
             })
         } else if let Some(table) = val.as_table() {
-            let hex_str = table.get("hex").and_then(|v| v.as_str()).ok_or_else(|| {
-                Error::InvalidTomlStructure {
+            let hex_str = table
+                .get("hex")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::InvalidTomlStructure {
                     name: display_key.to_owned(),
-                    reason: "swatch table missing `hex` field (add or make swatch value a string)"
+                    reason: "swatch table missing `hex` field (add or make \
+                             swatch value a string)"
                         .to_owned(),
-                }
-            })?;
+                })?;
 
             let hex = Color::try_from(hex_str)?;
 
-            let ascii = if let Some(ascii_str) = table.get("ascii").and_then(|v| v.as_str()) {
+            let ascii = if let Some(ascii_str) =
+                table.get("ascii").and_then(|v| v.as_str())
+            {
                 AsciiName::parse(ascii_str)?
             } else {
                 display_name.to_ascii()?
@@ -150,7 +154,8 @@ impl Swatch {
         } else {
             Err(crate::Error::Swatch(Error::InvalidTomlStructure {
                 name: display_key.to_owned(),
-                reason: "must be hex string or `{ hex, ascii }` table".to_owned(),
+                reason: "must be hex string or `{ hex, ascii }` table"
+                    .to_owned(),
             }))
         }
     }

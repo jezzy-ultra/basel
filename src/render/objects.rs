@@ -104,7 +104,10 @@ impl minijinja::value::Object for Color {
         }
     }
 
-    fn get_value(self: &Arc<Self>, key: &minijinja::Value) -> Option<minijinja::Value> {
+    fn get_value(
+        self: &Arc<Self>,
+        key: &minijinja::Value,
+    ) -> Option<minijinja::Value> {
         let key_str = key.as_str()?;
 
         match self.as_ref() {
@@ -144,7 +147,9 @@ impl minijinja::value::Object for Color {
                 match key_str {
                     "hex" => Some(minijinja::Value::from(hex)),
                     "swatch" | "name" => Some(minijinja::Value::from(swatch)),
-                    "swatch_ascii" | "ascii" => Some(minijinja::Value::from(swatch_ascii)),
+                    "swatch_ascii" | "ascii" => {
+                        Some(minijinja::Value::from(swatch_ascii))
+                    }
                     "r" => Some(minijinja::Value::from(r)),
                     "g" => Some(minijinja::Value::from(g)),
                     "b" => Some(minijinja::Value::from(b)),
@@ -160,7 +165,8 @@ impl minijinja::value::Object for Color {
     fn enumerate(self: &Arc<Self>) -> Enumerator {
         match self.as_ref() {
             Self::Swatch { .. } => Enumerator::Str(&[
-                "hex", "name", "ascii", "roles", "r", "g", "b", "rf", "gf", "bf",
+                "hex", "name", "ascii", "roles", "r", "g", "b", "rf", "gf",
+                "bf",
             ]),
             Self::Role { .. } => Enumerator::Str(&[
                 "hex",

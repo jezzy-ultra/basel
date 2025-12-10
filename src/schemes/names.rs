@@ -12,8 +12,9 @@ use crate::output::{Ascii, Unicode};
 const MAX_NAME_LENGTH: usize = 255;
 
 const WINDOWS_RESERVED: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6",
+    "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
+    "LPT7", "LPT8", "LPT9",
 ];
 
 #[non_exhaustive]
@@ -33,7 +34,8 @@ pub(crate) enum Error {
     },
     // TODO: offer suggestions on how to fix
     #[error(
-        "invalid generated ascii fallback `{ascii_name}` for {context} `{display_name}`: {reason}"
+        "invalid generated ascii fallback `{ascii_name}` for {context} \
+         `{display_name}`: {reason}"
     )]
     GeneratingAscii {
         context: String,
@@ -53,7 +55,10 @@ fn is_safe(c: char) -> bool {
     c.is_alphanumeric() || c == '-' || c == '_'
 }
 
-pub(crate) fn normalize_and_validate(name: &str, context: &str) -> Result<String> {
+pub(crate) fn normalize_and_validate(
+    name: &str,
+    context: &str,
+) -> Result<String> {
     let normalized = name.nfc().collect::<String>();
 
     if normalized.is_empty() {
@@ -69,7 +74,9 @@ pub(crate) fn normalize_and_validate(name: &str, context: &str) -> Result<String
         return Err(Error::Invalid {
             context: context.to_owned(),
             name: name.to_owned(),
-            reason: "contains character that's not a unicode letter, number, `-` or `_`".to_owned(),
+            reason: "contains character that's not a unicode letter, number, \
+                     `-` or `_`"
+                .to_owned(),
         }
         .into());
     }
@@ -112,7 +119,11 @@ pub(crate) fn validate_set_ascii(name: &str, context: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_auto_ascii(display_name: &str, ascii_name: &str, context: &str) -> Result<()> {
+fn validate_auto_ascii(
+    display_name: &str,
+    ascii_name: &str,
+    context: &str,
+) -> Result<()> {
     if ascii_name.len() > MAX_NAME_LENGTH {
         return Err(Error::GeneratingAscii {
             context: context.to_owned(),
@@ -195,7 +206,8 @@ pub(crate) fn to_ascii(display_name: &str, context: &str) -> Result<String> {
             context: context.to_owned(),
             display_name: display_name.to_owned(),
             ascii_name,
-            reason: "transliteration produced no valid filename characters".to_owned(),
+            reason: "transliteration produced no valid filename characters"
+                .to_owned(),
         }
         .into());
     }
@@ -267,7 +279,9 @@ impl<const DOMAIN: &'static str, K> Serialize for Validated<DOMAIN, K> {
     }
 }
 
-impl<'de, const DOMAIN: &'static str, K: TextKind> Deserialize<'de> for Validated<DOMAIN, K> {
+impl<'de, const DOMAIN: &'static str, K: TextKind> Deserialize<'de>
+    for Validated<DOMAIN, K>
+{
     fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
     where
         D: Deserializer<'de>,

@@ -17,16 +17,19 @@ pub(crate) enum Error {
     #[error("incomplete theymer directive `{directive}` in `{path}`")]
     Incomplete { directive: String, path: String },
 
-    #[error("unknown theymer directive{} `{}` in `{path}`",
-    if .directives.len() > 1 { "s" } else { "" }, format_list(.directives))]
+    #[error(
+        "unknown theymer directive{} `{}` in `{path}`",
+        if .directives.len() > 1 { "s" } else { "" },
+        format_list(.directives)
+    )]
     Unknown {
         directives: Vec<String>,
         path: String,
     },
 
     #[error(
-        "invalid value `{value}` for directive `{directive}` in `{path}`: expected `true` or \
-         `false`"
+        "invalid value `{value}` for directive `{directive}` in `{path}`: \
+         expected `true` or `false`"
     )]
     InvalidBool {
         value: String,
@@ -79,7 +82,8 @@ impl Directives {
 
         // TODO: refactor into own function
         if !theymer.is_empty() {
-            let unknown: Vec<_> = theymer.keys().map(ToOwned::to_owned).collect();
+            let unknown: Vec<_> =
+                theymer.keys().map(ToOwned::to_owned).collect();
 
             return Err(Error::Unknown {
                 directives: unknown,
@@ -126,10 +130,17 @@ impl Directives {
         }
     }
 
-    fn classify(line: &str, strip_patterns: &[Vec<String>], path: &str) -> Result<LineType> {
+    fn classify(
+        line: &str,
+        strip_patterns: &[Vec<String>],
+        path: &str,
+    ) -> Result<LineType> {
         let trimmed = line.trim();
 
-        if trimmed.is_empty() || trimmed.starts_with("##") || !trimmed.starts_with('#') {
+        if trimmed.is_empty()
+            || trimmed.starts_with("##")
+            || !trimmed.starts_with('#')
+        {
             return Ok(LineType::Content);
         }
 
@@ -156,7 +167,8 @@ impl Directives {
     }
 
     fn trim_ends(content: &[&str]) -> String {
-        let Some(start) = content.iter().position(|l| !l.trim().is_empty()) else {
+        let Some(start) = content.iter().position(|l| !l.trim().is_empty())
+        else {
             return String::new();
         };
 
@@ -181,11 +193,15 @@ impl Directives {
             .join(" = ")
     }
 
-    fn extract_style(raw: &mut IndexMap<String, String>, path: &str) -> Result<Style> {
+    fn extract_style(
+        raw: &mut IndexMap<String, String>,
+        path: &str,
+    ) -> Result<Style> {
         let mut style = Style::default();
 
         if let Some(v) = raw.shift_remove("render_swatch_names") {
-            style.color = if Self::parse_bool("render_swatch_names", &v, path)? {
+            style.color = if Self::parse_bool("render_swatch_names", &v, path)?
+            {
                 ColorStyle::Name
             } else {
                 ColorStyle::Hex

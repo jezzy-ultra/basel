@@ -11,7 +11,9 @@ pub(crate) mod directives;
 pub(crate) mod providers;
 
 pub(crate) use self::directives::{Directives, Error as DirectiveError};
-pub(crate) use self::providers::{Error as ProviderError, Resolved as ResolvedProvider};
+pub(crate) use self::providers::{
+    Error as ProviderError, Resolved as ResolvedProvider,
+};
 
 pub(crate) const SET_TEST_OBJECT: &str = "_set";
 pub(crate) const JINJA_TEMPLATE_SUFFIX: &str = ".jinja";
@@ -31,18 +33,23 @@ impl Loader {
 
     pub(crate) fn with_directives(
         &self,
-    ) -> anyhow::Result<IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)>> {
-        let mut map: IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)> = IndexMap::new();
+    ) -> anyhow::Result<
+        IndexMap<&str, (minijinja::Template<'_, '_>, &Directives)>,
+    > {
+        let mut map: IndexMap<
+            &str,
+            (minijinja::Template<'_, '_>, &Directives),
+        > = IndexMap::new();
         for (name, t) in self.env.templates() {
-            let directives = self
-                .directives
-                .get(name)
-                .ok_or_else(|| Error::InternalBug {
+            let directives = self.directives.get(name).ok_or_else(|| {
+                Error::InternalBug {
                     module: "templates",
                     reason: format!(
-                        "template `{name}` in jinja env but missing from directives map"
+                        "template `{name}` in jinja env but missing from \
+                         directives map"
                     ),
-                })?;
+                }
+            })?;
             map.insert(name, (t, directives));
         }
 
@@ -126,7 +133,8 @@ impl Loader {
                     .strip_prefix(dir)
                     .with_context(|| {
                         format!(
-                            "stripping directory prefix from template path `{}`",
+                            "stripping directory prefix from template path \
+                             `{}`",
                             path.display()
                         )
                     })
@@ -135,7 +143,9 @@ impl Loader {
                     .replace('\\', "/");
 
                 let raw_src = fs::read_to_string(path)
-                    .with_context(|| format!("reading template `{}`", path.display()))
+                    .with_context(|| {
+                        format!("reading template `{}`", path.display())
+                    })
                     .map_err(Error::template)?;
 
                 let (directives, filtered) = Directives::from_template(
