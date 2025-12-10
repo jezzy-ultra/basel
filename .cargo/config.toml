@@ -1,5 +1,6 @@
 [alias]
 bin = ["run", "--package", "cargo-bin", "--"]
+bi = ["binstall"]
 install-theymer = ["install", "--path", "."]
 it = ["install-theymer"]
 m = ["modules"]
